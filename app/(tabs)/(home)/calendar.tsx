@@ -6,7 +6,7 @@ import { Calendar, DateData } from 'react-native-calendars';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useApp } from '@/contexts/AppContext';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, getDay } from 'date-fns';
 
 interface MarkedDate {
   dots: { key: string; color: string }[];
@@ -30,6 +30,8 @@ const PRODUCT_COLORS = [
   '#8BC34A', // Light Green
 ];
 
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 export default function CalendarScreen() {
   const { products, scheduledDoses } = useApp();
   const [selectedDate, setSelectedDate] = useState('');
@@ -49,6 +51,32 @@ export default function CalendarScreen() {
     const productColor = productColors.find(pc => pc.productId === productId);
     return productColor?.color || colors.primary;
   }, [productColors]);
+
+  // Get protocol info for a product
+  const getProtocolInfo = useCallback((productId: string): string => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return '';
+
+    const frequencies = product.frequencies || [product.frequency];
+    const daysOfWeek = product.daysOfWeek || [];
+
+    // Build frequency display
+    let freqDisplay = frequencies.join(', ');
+
+    // Add days of week if specified
+    if (daysOfWeek.length > 0) {
+      freqDisplay += ` (${daysOfWeek.join(', ')})`;
+    } else if (frequencies.includes('Weekly') || frequencies.includes('Bi-Weekly')) {
+      // If weekly/bi-weekly without specific days, show the day based on starting date
+      if (product.startingDate) {
+        const startDate = new Date(product.startingDate + 'T00:00:00');
+        const dayOfWeek = getDay(startDate);
+        freqDisplay += ` (${DAY_NAMES[dayOfWeek]})`;
+      }
+    }
+
+    return freqDisplay;
+  }, [products]);
 
   // Prepare marked dates for calendar
   const markedDates = useMemo(() => {
@@ -195,12 +223,20 @@ export default function CalendarScreen() {
             <View style={styles.legendContainer}>
               <Text style={styles.legendTitle}>Medications</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.legendScroll}>
-                {productColors.map(pc => (
-                  <View key={pc.productId} style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: pc.color }]} />
-                    <Text style={styles.legendText}>{pc.productName}</Text>
-                  </View>
-                ))}
+                {productColors.map(pc => {
+                  const protocolInfo = getProtocolInfo(pc.productId);
+                  return (
+                    <View key={pc.productId} style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: pc.color }]} />
+                      <View>
+                        <Text style={styles.legendText}>{pc.productName}</Text>
+                        {protocolInfo && (
+                          <Text style={styles.legendSubtext}>{protocolInfo}</Text>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
               </ScrollView>
             </View>
           )}
@@ -218,25 +254,34 @@ export default function CalendarScreen() {
                   <Text style={styles.emptyText}>No doses scheduled for this date</Text>
                 </View>
               ) : (
-                dosesForSelectedDate.map((dose, index) => (
-                  <View key={`${dose.id}-${index}`} style={commonStyles.card}>
-                    <View style={commonStyles.cardHeader}>
-                      <View 
-                        style={[
-                          styles.productIndicator, 
-                          { backgroundColor: getProductColor(dose.productId) }
-                        ]} 
-                      />
-                      <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={commonStyles.cardTitle}>{dose.productName}</Text>
-                        <Text style={commonStyles.cardSubtitle}>
-                          {dose.doseMg}mg • {dose.route} • {dose.timeOfDay || dose.scheduledTime}
-                        </Text>
+                dosesForSelectedDate.map((dose, index) => {
+                  const protocolInfo = getProtocolInfo(dose.productId);
+                  const doseDate = parseISO(dose.scheduledDate + 'T00:00:00');
+                  const dayOfWeek = DAY_NAMES[getDay(doseDate)];
+                  
+                  return (
+                    <View key={`${dose.id}-${index}`} style={commonStyles.card}>
+                      <View style={commonStyles.cardHeader}>
+                        <View 
+                          style={[
+                            styles.productIndicator, 
+                            { backgroundColor: getProductColor(dose.productId) }
+                          ]} 
+                        />
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={commonStyles.cardTitle}>{dose.productName}</Text>
+                          <Text style={commonStyles.cardSubtitle}>
+                            {dose.doseMg}mg • {dose.route} • {dose.timeOfDay || dose.scheduledTime}
+                          </Text>
+                          <Text style={styles.protocolInfo}>
+                            {dayOfWeek} • {protocolInfo}
+                          </Text>
+                        </View>
+                        <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
                       </View>
-                      <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
                     </View>
-                  </View>
-                ))
+                  );
+                })
               )}
             </View>
           )}
@@ -316,7 +361,7 @@ const styles = StyleSheet.create({
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 20,
+    marginRight: 24,
     paddingVertical: 4,
   },
   legendDot: {
@@ -329,6 +374,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text,
     fontWeight: '500',
+  },
+  legendSubtext: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   selectedDateContainer: {
     marginBottom: 16,
@@ -355,6 +405,12 @@ const styles = StyleSheet.create({
     width: 4,
     height: 40,
     borderRadius: 2,
+  },
+  protocolInfo: {
+    fontSize: 12,
+    color: colors.primary,
+    marginTop: 4,
+    fontWeight: '500',
   },
   instructionsContainer: {
     alignItems: 'center',

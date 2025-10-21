@@ -7,7 +7,9 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useApp } from '@/contexts/AppContext';
 import { DoseDue, LowStockAlert } from '@/types';
 import PremiumModal from '@/components/PremiumModal';
-import { parseISO, startOfDay, endOfDay, isWithinInterval, isBefore } from 'date-fns';
+import { parseISO, startOfDay, endOfDay, isWithinInterval, isBefore, getDay } from 'date-fns';
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default function DashboardScreen() {
   const { user, products, inventory, doseLogs, scheduledDoses, isPremium, canAddProduct } = useApp();
@@ -18,6 +20,32 @@ export default function DashboardScreen() {
     setRefreshing(true);
     // Simulate refresh - in real app, sync with backend
     setTimeout(() => setRefreshing(false), 1000);
+  };
+
+  // Get protocol info for a product
+  const getProtocolInfo = (productId: string): string => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return '';
+
+    const frequencies = product.frequencies || [product.frequency];
+    const daysOfWeek = product.daysOfWeek || [];
+
+    // Build frequency display
+    let freqDisplay = frequencies.join(', ');
+
+    // Add days of week if specified
+    if (daysOfWeek.length > 0) {
+      freqDisplay += ` (${daysOfWeek.join(', ')})`;
+    } else if (frequencies.includes('Weekly') || frequencies.includes('Bi-Weekly')) {
+      // If weekly/bi-weekly without specific days, show the day based on starting date
+      if (product.startingDate) {
+        const startDate = new Date(product.startingDate + 'T00:00:00');
+        const dayOfWeek = getDay(startDate);
+        freqDisplay += ` (${DAY_NAMES[dayOfWeek]})`;
+      }
+    }
+
+    return freqDisplay;
   };
 
   // Calculate doses due in the current calendar day (12:00 AM - 11:59 PM)
@@ -232,33 +260,34 @@ export default function DashboardScreen() {
               </View>
             ) : (
               <Pressable onPress={() => router.push('/(tabs)/(home)/calendar')}>
-                {dosesDue.map((dose, index) => (
-                  <View key={`${dose.productId}-${dose.scheduledDate.toISOString()}-${index}`} style={commonStyles.card}>
-                    <View style={commonStyles.cardHeader}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={commonStyles.cardTitle}>{dose.productName}</Text>
-                        <Text style={commonStyles.cardSubtitle}>
-                          {dose.doseMg}mg • {dose.route} • {dose.timeOfDay || dose.scheduledTime}
-                        </Text>
-                        <Text style={[commonStyles.cardSubtitle, { fontSize: 12 }]}>
-                          {dose.scheduledDate.toLocaleDateString('en-US', {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                          })}
-                        </Text>
-                      </View>
-                      <View style={[
-                        styles.statusBadge, 
-                        { backgroundColor: dose.isOverdue ? colors.alert : colors.success }
-                      ]}>
-                        <Text style={styles.statusText}>
-                          {dose.isOverdue ? 'Overdue' : 'Due'}
-                        </Text>
+                {dosesDue.map((dose, index) => {
+                  const protocolInfo = getProtocolInfo(dose.productId);
+                  const dayOfWeek = DAY_NAMES[getDay(dose.scheduledDate)];
+                  
+                  return (
+                    <View key={`${dose.productId}-${dose.scheduledDate.toISOString()}-${index}`} style={commonStyles.card}>
+                      <View style={commonStyles.cardHeader}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={commonStyles.cardTitle}>{dose.productName}</Text>
+                          <Text style={commonStyles.cardSubtitle}>
+                            {dose.doseMg}mg • {dose.route} • {dose.timeOfDay || dose.scheduledTime}
+                          </Text>
+                          <Text style={styles.protocolInfo}>
+                            {dayOfWeek} • {protocolInfo}
+                          </Text>
+                        </View>
+                        <View style={[
+                          styles.statusBadge, 
+                          { backgroundColor: dose.isOverdue ? colors.alert : colors.success }
+                        ]}>
+                          <Text style={styles.statusText}>
+                            {dose.isOverdue ? 'Overdue' : 'Due'}
+                          </Text>
+                        </View>
                       </View>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </Pressable>
             )}
           </View>
@@ -402,6 +431,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.text,
+  },
+  protocolInfo: {
+    fontSize: 12,
+    color: colors.primary,
+    marginTop: 4,
+    fontWeight: '500',
   },
   alertCard: {
     borderLeftWidth: 3,
