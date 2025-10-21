@@ -1,35 +1,88 @@
-import "react-native-reanimated";
-import React, { useEffect } from "react";
-import { useFonts } from "expo-font";
-import { Stack, router } from "expo-router";
-import * as SplashScreen from "expo-splash-screen";
-import { SystemBars } from "react-native-edge-to-edge";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { useColorScheme, Alert } from "react-native";
-import { useNetworkState } from "expo-network";
+
+import React, { useEffect } from 'react';
+import { StatusBar } from 'expo-status-bar';
 import {
   DarkTheme,
   DefaultTheme,
   Theme,
   ThemeProvider,
-} from "@react-navigation/native";
-import { StatusBar } from "expo-status-bar";
-import { Button } from "@/components/button";
-import { WidgetProvider } from "@/contexts/WidgetContext";
+} from '@react-navigation/native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Stack, router, useSegments } from 'expo-router';
+import 'react-native-reanimated';
+import { useNetworkState } from 'expo-network';
+import { useFonts } from 'expo-font';
+import { useColorScheme } from 'react-native';
+import { SystemBars } from 'react-native-edge-to-edge';
+import * as SplashScreen from 'expo-splash-screen';
+import { AppProvider, useApp } from '@/contexts/AppContext';
+import { colors } from '@/styles/commonStyles';
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
+// Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
 
-export const unstable_settings = {
-  initialRouteName: "(tabs)",
+// Custom dark theme matching our color scheme
+const BioHackerTheme: Theme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    primary: colors.primary,
+    background: colors.background,
+    card: colors.card,
+    text: colors.text,
+    border: colors.border,
+    notification: colors.alert,
+  },
 };
 
+function RootLayoutNav() {
+  const { user, isLoading, hasSeenDisclaimer, hasCompletedOnboarding } = useApp();
+  const segments = useSegments();
+
+  useEffect(() => {
+    if (!isLoading) {
+      // Handle initial routing based on app state
+      if (!hasSeenDisclaimer || !hasCompletedOnboarding || !user) {
+        // User needs to complete onboarding
+        if (segments[0] !== 'onboarding') {
+          router.replace('/onboarding');
+        }
+      } else {
+        // User is authenticated, go to main app
+        if (segments[0] !== '(tabs)') {
+          router.replace('/(tabs)/(home)/dashboard');
+        }
+      }
+    }
+  }, [user, isLoading, hasSeenDisclaimer, hasCompletedOnboarding, segments]);
+
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: colors.background },
+      }}
+    >
+      <Stack.Screen name="onboarding" />
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen 
+        name="disclaimer-view" 
+        options={{
+          presentation: 'modal',
+          headerShown: true,
+          title: 'Disclaimer',
+        }}
+      />
+    </Stack>
+  );
+}
+
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
   const networkState = useNetworkState();
   const [loaded] = useFonts({
-    SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
+    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
+  const colorScheme = useColorScheme();
 
   useEffect(() => {
     if (loaded) {
@@ -37,88 +90,19 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
-  React.useEffect(() => {
-    if (
-      !networkState.isConnected &&
-      networkState.isInternetReachable === false
-    ) {
-      Alert.alert(
-        "🔌 You are offline",
-        "You can keep using the app! Your changes will be saved locally and synced when you are back online."
-      );
-    }
-  }, [networkState.isConnected, networkState.isInternetReachable]);
-
   if (!loaded) {
     return null;
   }
 
-  const CustomDefaultTheme: Theme = {
-    ...DefaultTheme,
-    dark: false,
-    colors: {
-      primary: "rgb(0, 122, 255)", // System Blue
-      background: "rgb(242, 242, 247)", // Light mode background
-      card: "rgb(255, 255, 255)", // White cards/surfaces
-      text: "rgb(0, 0, 0)", // Black text for light mode
-      border: "rgb(216, 216, 220)", // Light gray for separators/borders
-      notification: "rgb(255, 59, 48)", // System Red
-    },
-  };
-
-  const CustomDarkTheme: Theme = {
-    ...DarkTheme,
-    colors: {
-      primary: "rgb(10, 132, 255)", // System Blue (Dark Mode)
-      background: "rgb(1, 1, 1)", // True black background for OLED displays
-      card: "rgb(28, 28, 30)", // Dark card/surface color
-      text: "rgb(255, 255, 255)", // White text for dark mode
-      border: "rgb(44, 44, 46)", // Dark gray for separators/borders
-      notification: "rgb(255, 69, 58)", // System Red (Dark Mode)
-    },
-  };
   return (
-    <>
-      <StatusBar style="auto" animated />
-        <ThemeProvider
-          value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
-        >
-          <WidgetProvider>
-            <GestureHandlerRootView>
-            <Stack>
-              {/* Main app with tabs */}
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-
-              {/* Modal Demo Screens */}
-              <Stack.Screen
-                name="modal"
-                options={{
-                  presentation: "modal",
-                  title: "Standard Modal",
-                }}
-              />
-              <Stack.Screen
-                name="formsheet"
-                options={{
-                  presentation: "formSheet",
-                  title: "Form Sheet Modal",
-                  sheetGrabberVisible: true,
-                  sheetAllowedDetents: [0.5, 0.8, 1.0],
-                  sheetCornerRadius: 20,
-                }}
-              />
-              <Stack.Screen
-                name="transparent-modal"
-                options={{
-                  presentation: "transparentModal",
-                  headerShown: false,
-                }}
-              />
-            </Stack>
-            <SystemBars style={"auto"} />
-            </GestureHandlerRootView>
-          </WidgetProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AppProvider>
+        <ThemeProvider value={BioHackerTheme}>
+          <SystemBars style="light" />
+          <RootLayoutNav />
+          <StatusBar style="light" />
         </ThemeProvider>
-    </>
+      </AppProvider>
+    </GestureHandlerRootView>
   );
 }

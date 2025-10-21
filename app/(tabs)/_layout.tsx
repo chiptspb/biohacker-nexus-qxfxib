@@ -1,55 +1,57 @@
+
 import React from 'react';
 import { Platform } from 'react-native';
-import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import { Stack } from 'expo-router';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
+import { colors } from '@/styles/commonStyles';
 
 export default function TabLayout() {
-  // Define the tabs configuration
   const tabs: TabBarItem[] = [
     {
       name: '(home)',
-      route: '/(tabs)/(home)/',
+      route: '/(tabs)/(home)/dashboard',
       icon: 'house.fill',
       label: 'Home',
     },
     {
-      name: 'profile',
-      route: '/(tabs)/profile',
-      icon: 'person.fill',
-      label: 'Profile',
+      name: 'medications',
+      route: '/(tabs)/medications',
+      icon: 'pills.fill',
+      label: 'Meds',
+    },
+    {
+      name: 'inventory',
+      route: '/(tabs)/inventory',
+      icon: 'cube.box.fill',
+      label: 'Stock',
+    },
+    {
+      name: 'settings',
+      route: '/(tabs)/settings',
+      icon: 'gearshape.fill',
+      label: 'Settings',
     },
   ];
 
-  // Use NativeTabs for iOS, custom FloatingTabBar for Android and Web
-  if (Platform.OS === 'ios') {
-    return (
-      <NativeTabs>
-        <NativeTabs.Trigger name="(home)">
-          <Icon sf="house.fill" drawable="ic_home" />
-          <Label>Home</Label>
-        </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="profile">
-          <Icon sf="person.fill" drawable="ic_profile" />
-          <Label>Profile</Label>
-        </NativeTabs.Trigger>
-      </NativeTabs>
-    );
-  }
-
-  // For Android and Web, use Stack navigation with custom floating tab bar
   return (
     <>
       <Stack
         screenOptions={{
           headerShown: false,
-          animation: 'none', // Remove fade animation to prevent black screen flash
+          animation: 'none',
+          contentStyle: { backgroundColor: colors.background },
         }}
       >
         <Stack.Screen name="(home)" />
-        <Stack.Screen name="profile" />
+        <Stack.Screen name="medications" />
+        <Stack.Screen name="add-product" />
+        <Stack.Screen name="edit-product" />
+        <Stack.Screen name="product-details" />
+        <Stack.Screen name="inventory" />
+        <Stack.Screen name="edit-inventory" />
+        <Stack.Screen name="settings" />
       </Stack>
-      <FloatingTabBar tabs={tabs} />
+      <FloatingTabBar tabs={tabs} containerWidth={340} />
     </>
   );
 }
