@@ -7,7 +7,7 @@ import { useApp } from '@/contexts/AppContext';
 import { DoseLog, Route } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { IconSymbol } from '@/components/IconSymbol';
-import { startOfDay, addHours, parseISO, isBefore, isAfter, differenceInHours } from 'date-fns';
+import { startOfDay, endOfDay, parseISO, isBefore, isWithinInterval, differenceInHours } from 'date-fns';
 
 const ROUTES: Route[] = ['SubQ', 'IM', 'Oral', 'Nasal', 'Topical', 'Vaginal'];
 
@@ -41,9 +41,10 @@ export default function LogDoseScreen() {
       return;
     }
 
-    // Check if there's a scheduled dose within the next 24 hours for this product
+    // Check if there's a scheduled dose within today's calendar day (12:00 AM - 11:59 PM) for this product
     const now = new Date();
-    const next24Hours = addHours(now, 24);
+    const todayStart = startOfDay(now);
+    const todayEnd = endOfDay(now);
     
     const upcomingDoses = scheduledDoses.filter(dose => {
       if (dose.productId !== selectedProductId || dose.completed) {
@@ -51,7 +52,7 @@ export default function LogDoseScreen() {
       }
       
       const doseDateTime = parseISO(`${dose.scheduledDate}T${dose.scheduledTime}:00`);
-      return isAfter(doseDateTime, now) && isBefore(doseDateTime, next24Hours);
+      return isWithinInterval(doseDateTime, { start: todayStart, end: todayEnd });
     });
 
     // Sort by date to get the next scheduled dose
@@ -64,13 +65,14 @@ export default function LogDoseScreen() {
     const nextScheduledDose = upcomingDoses[0];
 
     if (nextScheduledDose) {
-      // There's a scheduled dose within 24 hours - prompt the user
+      // There's a scheduled dose today - prompt the user
       const doseDateTime = parseISO(`${nextScheduledDose.scheduledDate}T${nextScheduledDose.scheduledTime}:00`);
       const hoursUntil = differenceInHours(doseDateTime, now);
+      const timeDisplay = nextScheduledDose.timeOfDay || nextScheduledDose.scheduledTime;
       
       Alert.alert(
         'Scheduled Dose Detected',
-        `You have a dose of ${selectedProduct?.name} scheduled in ${hoursUntil} hour${hoursUntil !== 1 ? 's' : ''}.\n\nDoes this dose replace the scheduled dose, or is it an additional dose?`,
+        `You have a dose of ${selectedProduct?.name} scheduled for ${timeDisplay} today${hoursUntil > 0 ? ` (in ${hoursUntil} hour${hoursUntil !== 1 ? 's' : ''})` : ''}.\n\nDoes this dose replace the scheduled dose, or is it an additional dose?`,
         [
           {
             text: 'Cancel',
@@ -89,7 +91,7 @@ export default function LogDoseScreen() {
         { cancelable: true }
       );
     } else {
-      // No scheduled dose within 24 hours - proceed normally
+      // No scheduled dose today - proceed normally
       checkInventoryAndSave(amountNum, null);
     }
   };

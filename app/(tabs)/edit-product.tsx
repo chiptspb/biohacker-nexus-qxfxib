@@ -11,6 +11,8 @@ import { addDays, addWeeks, addMonths, startOfDay, getDay, isBefore, isEqual, su
 import { IconSymbol } from '@/components/IconSymbol';
 
 const FREQUENCIES: Frequency[] = [
+  'AM Daily',
+  'PM Daily',
   'Daily',
   'Every Other Day',
   'Every 3 Days',
@@ -47,7 +49,9 @@ export default function EditProductScreen() {
   const [category, setCategory] = useState(product?.category || '');
   const [medicationType, setMedicationType] = useState<MedicationType>(product?.medicationType || 'Other Peptide');
   const [doseMg, setDoseMg] = useState(product?.doseMg.toString() || '');
-  const [frequency, setFrequency] = useState<Frequency>(product?.frequency || 'Weekly');
+  const [selectedFrequencies, setSelectedFrequencies] = useState<Frequency[]>(
+    product?.frequencies || [product?.frequency || 'Daily']
+  );
   const [route, setRoute] = useState<Route>(product?.route || 'SubQ');
   const [schedule, setSchedule] = useState(product?.schedule || '');
   const [daysOfWeek, setDaysOfWeek] = useState<DayOfWeek[]>(product?.daysOfWeek || []);
@@ -65,6 +69,29 @@ export default function EditProductScreen() {
     setToastMessage(message);
     setToastType(type);
     setToastVisible(true);
+  };
+
+  const toggleFrequency = (freq: Frequency) => {
+    // Special handling for AM Daily and PM Daily - they can both be selected
+    if (freq === 'AM Daily' || freq === 'PM Daily') {
+      if (selectedFrequencies.includes(freq)) {
+        // Remove this frequency
+        const newFreqs = selectedFrequencies.filter(f => f !== freq);
+        // If removing both AM and PM, default to Daily
+        if (newFreqs.length === 0) {
+          setSelectedFrequencies(['Daily']);
+        } else {
+          setSelectedFrequencies(newFreqs);
+        }
+      } else {
+        // Add this frequency, remove other non-AM/PM frequencies
+        const amPmFreqs = selectedFrequencies.filter(f => f === 'AM Daily' || f === 'PM Daily');
+        setSelectedFrequencies([...amPmFreqs, freq]);
+      }
+    } else {
+      // For other frequencies, only one can be selected
+      setSelectedFrequencies([freq]);
+    }
   };
 
   const toggleDayOfWeek = (day: DayOfWeek) => {
@@ -113,7 +140,7 @@ export default function EditProductScreen() {
 
     console.log('Calculating doses:', {
       productName,
-      frequency,
+      frequencies: selectedFrequencies,
       daysOfWeek,
       originalStartDate: start.toISOString(),
       effectiveStartDate: effectiveStart.toISOString(),
@@ -121,150 +148,175 @@ export default function EditProductScreen() {
       endDate: endDate.toISOString(),
     });
 
-    // Helper function to get interval days based on frequency
-    const getIntervalDays = (freq: Frequency): number => {
-      switch (freq) {
-        case 'Daily': return 1;
-        case 'Every Other Day': return 2;
-        case 'Every 3 Days': return 3;
-        case 'Every 4 Days': return 4;
-        case 'Every 5 Days': return 5;
-        case 'Every 6 Days': return 6;
-        default: return 1;
-      }
-    };
+    // Process each selected frequency
+    selectedFrequencies.forEach(frequency => {
+      // Helper function to get interval days based on frequency
+      const getIntervalDays = (freq: Frequency): number => {
+        switch (freq) {
+          case 'AM Daily':
+          case 'PM Daily':
+          case 'Daily': return 1;
+          case 'Every Other Day': return 2;
+          case 'Every 3 Days': return 3;
+          case 'Every 4 Days': return 4;
+          case 'Every 5 Days': return 5;
+          case 'Every 6 Days': return 6;
+          default: return 1;
+        }
+      };
 
-    if (frequency === 'Daily' || frequency === 'Every Other Day' || 
-        frequency === 'Every 3 Days' || frequency === 'Every 4 Days' || 
-        frequency === 'Every 5 Days' || frequency === 'Every 6 Days') {
-      // Fixed interval frequencies
-      const intervalDays = getIntervalDays(frequency);
-      let currentDate = effectiveStart;
+      // Determine time and timeOfDay based on frequency
+      let scheduledTime = '09:00';
+      let timeOfDay: 'AM' | 'PM' | undefined = undefined;
       
-      while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
-        doses.push({
-          id: `${prodId}-${currentDate.toISOString()}`,
-          productId: prodId,
-          productName,
-          doseMg: doseAmount,
-          route: routeType,
-          scheduledDate: currentDate.toISOString().split('T')[0],
-          scheduledTime: '09:00',
-          completed: false,
-        });
-        currentDate = addDays(currentDate, intervalDays);
+      if (frequency === 'AM Daily') {
+        scheduledTime = '09:00';
+        timeOfDay = 'AM';
+      } else if (frequency === 'PM Daily') {
+        scheduledTime = '21:00';
+        timeOfDay = 'PM';
       }
-    } else if (frequency === 'Weekly') {
-      if (daysOfWeek.length > 0) {
-        // Weekly with specific days: Find next occurrence of each selected day, then recur weekly
-        const selectedDayNumbers = daysOfWeek.map(day => DAY_MAP[day]).sort((a, b) => a - b);
+
+      if (frequency === 'AM Daily' || frequency === 'PM Daily' || frequency === 'Daily' || 
+          frequency === 'Every Other Day' || frequency === 'Every 3 Days' || 
+          frequency === 'Every 4 Days' || frequency === 'Every 5 Days' || 
+          frequency === 'Every 6 Days') {
+        // Fixed interval frequencies
+        const intervalDays = getIntervalDays(frequency);
+        let currentDate = effectiveStart;
         
-        console.log('Selected days:', daysOfWeek, 'Day numbers:', selectedDayNumbers);
-        
-        // For each selected day of the week
-        selectedDayNumbers.forEach(targetDay => {
-          // Find the first occurrence of this day on or after the effective start date
-          const firstOccurrence = findNextDayOfWeek(effectiveStart, targetDay);
+        while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
+          doses.push({
+            id: `${prodId}-${frequency}-${currentDate.toISOString()}`,
+            productId: prodId,
+            productName,
+            doseMg: doseAmount,
+            route: routeType,
+            scheduledDate: currentDate.toISOString().split('T')[0],
+            scheduledTime,
+            completed: false,
+            timeOfDay,
+          });
+          currentDate = addDays(currentDate, intervalDays);
+        }
+      } else if (frequency === 'Weekly') {
+        if (daysOfWeek.length > 0) {
+          // Weekly with specific days: Find next occurrence of each selected day, then recur weekly
+          const selectedDayNumbers = daysOfWeek.map(day => DAY_MAP[day]).sort((a, b) => a - b);
           
-          console.log(`First occurrence of day ${targetDay} (${Object.keys(DAY_MAP).find(k => DAY_MAP[k as DayOfWeek] === targetDay)}):`, firstOccurrence.toISOString(), 'Day:', getDay(firstOccurrence));
+          console.log('Selected days:', daysOfWeek, 'Day numbers:', selectedDayNumbers);
           
-          // Add doses every week on this day
-          let currentDate = firstOccurrence;
+          // For each selected day of the week
+          selectedDayNumbers.forEach(targetDay => {
+            // Find the first occurrence of this day on or after the effective start date
+            const firstOccurrence = findNextDayOfWeek(effectiveStart, targetDay);
+            
+            console.log(`First occurrence of day ${targetDay} (${Object.keys(DAY_MAP).find(k => DAY_MAP[k as DayOfWeek] === targetDay)}):`, firstOccurrence.toISOString(), 'Day:', getDay(firstOccurrence));
+            
+            // Add doses every week on this day
+            let currentDate = firstOccurrence;
+            while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
+              doses.push({
+                id: `${prodId}-${frequency}-${currentDate.toISOString()}`,
+                productId: prodId,
+                productName,
+                doseMg: doseAmount,
+                route: routeType,
+                scheduledDate: currentDate.toISOString().split('T')[0],
+                scheduledTime,
+                completed: false,
+              });
+              currentDate = addWeeks(currentDate, 1);
+            }
+          });
+        } else {
+          // Weekly without specific days: Use the same day of week as start date
+          let currentDate = effectiveStart;
           while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
             doses.push({
-              id: `${prodId}-${currentDate.toISOString()}`,
+              id: `${prodId}-${frequency}-${currentDate.toISOString()}`,
               productId: prodId,
               productName,
               doseMg: doseAmount,
               route: routeType,
               scheduledDate: currentDate.toISOString().split('T')[0],
-              scheduledTime: '09:00',
+              scheduledTime,
               completed: false,
             });
             currentDate = addWeeks(currentDate, 1);
           }
-        });
-      } else {
-        // Weekly without specific days: Use the same day of week as start date
-        let currentDate = effectiveStart;
-        while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
-          doses.push({
-            id: `${prodId}-${currentDate.toISOString()}`,
-            productId: prodId,
-            productName,
-            doseMg: doseAmount,
-            route: routeType,
-            scheduledDate: currentDate.toISOString().split('T')[0],
-            scheduledTime: '09:00',
-            completed: false,
-          });
-          currentDate = addWeeks(currentDate, 1);
         }
-      }
-    } else if (frequency === 'Bi-Weekly') {
-      if (daysOfWeek.length > 0) {
-        // Bi-weekly with specific days: Find next occurrence of each selected day, then recur every 2 weeks
-        const selectedDayNumbers = daysOfWeek.map(day => DAY_MAP[day]).sort((a, b) => a - b);
-        
-        selectedDayNumbers.forEach(targetDay => {
-          const firstOccurrence = findNextDayOfWeek(effectiveStart, targetDay);
+      } else if (frequency === 'Bi-Weekly') {
+        if (daysOfWeek.length > 0) {
+          // Bi-weekly with specific days: Find next occurrence of each selected day, then recur every 2 weeks
+          const selectedDayNumbers = daysOfWeek.map(day => DAY_MAP[day]).sort((a, b) => a - b);
           
-          // Add doses every 2 weeks on this day
-          let currentDate = firstOccurrence;
+          selectedDayNumbers.forEach(targetDay => {
+            const firstOccurrence = findNextDayOfWeek(effectiveStart, targetDay);
+            
+            // Add doses every 2 weeks on this day
+            let currentDate = firstOccurrence;
+            while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
+              doses.push({
+                id: `${prodId}-${frequency}-${currentDate.toISOString()}`,
+                productId: prodId,
+                productName,
+                doseMg: doseAmount,
+                route: routeType,
+                scheduledDate: currentDate.toISOString().split('T')[0],
+                scheduledTime,
+                completed: false,
+              });
+              currentDate = addWeeks(currentDate, 2);
+            }
+          });
+        } else {
+          // Bi-weekly without specific days: Use the same day of week as start date
+          let currentDate = effectiveStart;
           while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
             doses.push({
-              id: `${prodId}-${currentDate.toISOString()}`,
+              id: `${prodId}-${frequency}-${currentDate.toISOString()}`,
               productId: prodId,
               productName,
               doseMg: doseAmount,
               route: routeType,
               scheduledDate: currentDate.toISOString().split('T')[0],
-              scheduledTime: '09:00',
+              scheduledTime,
               completed: false,
             });
             currentDate = addWeeks(currentDate, 2);
           }
-        });
-      } else {
-        // Bi-weekly without specific days: Use the same day of week as start date
+        }
+      } else if (frequency === 'Monthly') {
+        // Monthly: Add a dose on the same day of each month
         let currentDate = effectiveStart;
         while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
           doses.push({
-            id: `${prodId}-${currentDate.toISOString()}`,
+            id: `${prodId}-${frequency}-${currentDate.toISOString()}`,
             productId: prodId,
             productName,
             doseMg: doseAmount,
             route: routeType,
             scheduledDate: currentDate.toISOString().split('T')[0],
-            scheduledTime: '09:00',
+            scheduledTime,
             completed: false,
           });
-          currentDate = addWeeks(currentDate, 2);
+          currentDate = addMonths(currentDate, 1);
         }
       }
-    } else if (frequency === 'Monthly') {
-      // Monthly: Add a dose on the same day of each month
-      let currentDate = effectiveStart;
-      while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
-        doses.push({
-          id: `${prodId}-${currentDate.toISOString()}`,
-          productId: prodId,
-          productName,
-          doseMg: doseAmount,
-          route: routeType,
-          scheduledDate: currentDate.toISOString().split('T')[0],
-          scheduledTime: '09:00',
-          completed: false,
-        });
-        currentDate = addMonths(currentDate, 1);
-      }
-    }
+    });
 
-    // Sort doses by date
-    doses.sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
+    // Sort doses by date and time
+    doses.sort((a, b) => {
+      const dateCompare = a.scheduledDate.localeCompare(b.scheduledDate);
+      if (dateCompare !== 0) return dateCompare;
+      return a.scheduledTime.localeCompare(b.scheduledTime);
+    });
 
     console.log(`Generated ${doses.length} doses for 1 year. First 5:`, doses.slice(0, 5).map(d => ({
       date: d.scheduledDate,
+      time: d.scheduledTime,
+      timeOfDay: d.timeOfDay,
       day: getDay(new Date(d.scheduledDate + 'T00:00:00'))
     })));
 
@@ -291,6 +343,11 @@ export default function EditProductScreen() {
       return;
     }
 
+    if (selectedFrequencies.length === 0) {
+      showToast('Please select at least one frequency.', 'error');
+      return;
+    }
+
     // Validate starting date is not too far in the past (more than 6 months)
     const sixMonthsAgo = subMonths(new Date(), 6);
     const selectedStart = startOfDay(startingDate);
@@ -311,7 +368,8 @@ export default function EditProductScreen() {
         category: category.trim() || 'General',
         medicationType,
         doseMg: doseNum,
-        frequency,
+        frequency: selectedFrequencies[0], // Primary frequency for backward compatibility
+        frequencies: selectedFrequencies, // Store all selected frequencies
         route,
         schedule: schedule.trim() || undefined,
         daysOfWeek: daysOfWeek.length > 0 ? daysOfWeek : undefined,
@@ -421,27 +479,34 @@ export default function EditProductScreen() {
 
           <View style={commonStyles.section}>
             <Text style={commonStyles.label}>Frequency *</Text>
+            <Text style={styles.helperText}>
+              You can select both AM Daily and PM Daily for twice-daily dosing.
+            </Text>
             <View style={styles.optionsGrid}>
-              {FREQUENCIES.map(freq => (
-                <Pressable
-                  key={freq}
-                  style={[
-                    styles.option,
-                    frequency === freq && styles.optionSelected,
-                  ]}
-                  onPress={() => setFrequency(freq)}
-                  disabled={isSaving}
-                >
-                  <Text
+              {FREQUENCIES.map(freq => {
+                const isSelected = selectedFrequencies.includes(freq);
+                
+                return (
+                  <Pressable
+                    key={freq}
                     style={[
-                      styles.optionText,
-                      frequency === freq && styles.optionTextSelected,
+                      styles.option,
+                      isSelected && styles.optionSelected,
                     ]}
+                    onPress={() => toggleFrequency(freq)}
+                    disabled={isSaving}
                   >
-                    {freq}
-                  </Text>
-                </Pressable>
-              ))}
+                    <Text
+                      style={[
+                        styles.optionText,
+                        isSelected && styles.optionTextSelected,
+                      ]}
+                    >
+                      {freq}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
 

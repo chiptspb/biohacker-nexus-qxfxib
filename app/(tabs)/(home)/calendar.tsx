@@ -230,7 +230,7 @@ export default function CalendarScreen() {
                       <View style={{ flex: 1, marginLeft: 12 }}>
                         <Text style={commonStyles.cardTitle}>{dose.productName}</Text>
                         <Text style={commonStyles.cardSubtitle}>
-                          {dose.doseMg}mg • {dose.route} • {dose.scheduledTime}
+                          {dose.doseMg}mg • {dose.route} • {dose.timeOfDay || dose.scheduledTime}
                         </Text>
                       </View>
                       <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />

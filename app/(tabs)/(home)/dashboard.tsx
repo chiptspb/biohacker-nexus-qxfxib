@@ -7,7 +7,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useApp } from '@/contexts/AppContext';
 import { DoseDue, LowStockAlert } from '@/types';
 import PremiumModal from '@/components/PremiumModal';
-import { parseISO, isAfter, isBefore, addHours } from 'date-fns';
+import { parseISO, startOfDay, endOfDay, isWithinInterval, isBefore } from 'date-fns';
 
 export default function DashboardScreen() {
   const { user, products, inventory, doseLogs, scheduledDoses, isPremium, canAddProduct } = useApp();
@@ -20,14 +20,16 @@ export default function DashboardScreen() {
     setTimeout(() => setRefreshing(false), 1000);
   };
 
-  // Calculate doses due in next 24 hours
+  // Calculate doses due in the current calendar day (12:00 AM - 11:59 PM)
   const dosesDue = useMemo((): DoseDue[] => {
     const now = new Date();
-    const next24Hours = addHours(now, 24);
+    const todayStart = startOfDay(now); // 12:00 AM today
+    const todayEnd = endOfDay(now); // 11:59:59 PM today
     
-    console.log('Filtering doses due:', {
+    console.log('Filtering doses due for calendar day:', {
       now: now.toISOString(),
-      next24Hours: next24Hours.toISOString(),
+      todayStart: todayStart.toISOString(),
+      todayEnd: todayEnd.toISOString(),
       totalScheduledDoses: scheduledDoses.length,
     });
     
@@ -38,70 +40,90 @@ export default function DashboardScreen() {
         // Parse the scheduled date and time
         const doseDateTime = parseISO(`${dose.scheduledDate}T${dose.scheduledTime}:00`);
         
-        // Check if dose is within the next 24 hours
-        const isInNext24Hours = isBefore(doseDateTime, next24Hours) || doseDateTime.getTime() === next24Hours.getTime();
+        // Check if dose is within today's calendar day (12:00 AM - 11:59 PM)
+        const isToday = isWithinInterval(doseDateTime, { start: todayStart, end: todayEnd });
         
-        return isInNext24Hours;
+        return isToday;
       })
       .map(dose => {
         const doseDateTime = parseISO(`${dose.scheduledDate}T${dose.scheduledTime}:00`);
-        const isOverdue = isBefore(doseDateTime, now);
+        const isOverdue = isBefore(doseDateTime, new Date());
         
         return {
           productId: dose.productId,
           productName: dose.productName,
           doseMg: dose.doseMg,
           route: dose.route,
-          scheduledTime: dose.scheduledTime,
+          scheduledTime: dose.timeOfDay || dose.scheduledTime, // Show AM/PM for AM/PM daily doses
           scheduledDate: doseDateTime,
           isOverdue,
+          timeOfDay: dose.timeOfDay,
         };
       })
       .sort((a, b) => a.scheduledDate.getTime() - b.scheduledDate.getTime());
   }, [scheduledDoses]);
 
-  // Calculate low stock alerts
+  // Calculate low stock alerts (products with less than 3 months' supply)
   const lowStockAlerts = useMemo((): LowStockAlert[] => {
     return products.map(product => {
       const inv = inventory.find(i => i.productId === product.id);
       if (!inv) return null;
 
-      // Calculate doses per month based on frequency
+      // Calculate total doses per month based on all frequencies
+      const frequencies = product.frequencies || [product.frequency];
       let dosesPerMonth = 0;
-      switch (product.frequency) {
-        case 'Daily':
-          dosesPerMonth = 30;
-          break;
-        case 'Every Other Day':
-          dosesPerMonth = 15;
-          break;
-        case 'Weekly':
-          // If specific days are selected, count them
-          if (product.daysOfWeek && product.daysOfWeek.length > 0) {
-            dosesPerMonth = product.daysOfWeek.length * 4; // Approximate 4 weeks per month
-          } else {
-            dosesPerMonth = 4;
-          }
-          break;
-        case 'Bi-Weekly':
-          if (product.daysOfWeek && product.daysOfWeek.length > 0) {
-            dosesPerMonth = product.daysOfWeek.length * 2; // Approximate 2 doses per month
-          } else {
-            dosesPerMonth = 2;
-          }
-          break;
-        case 'Monthly':
-          dosesPerMonth = 1;
-          break;
-        default:
-          dosesPerMonth = 0;
-      }
+      
+      frequencies.forEach(freq => {
+        switch (freq) {
+          case 'AM Daily':
+          case 'PM Daily':
+          case 'Daily':
+            dosesPerMonth += 30;
+            break;
+          case 'Every Other Day':
+            dosesPerMonth += 15;
+            break;
+          case 'Every 3 Days':
+            dosesPerMonth += 10;
+            break;
+          case 'Every 4 Days':
+            dosesPerMonth += 7.5;
+            break;
+          case 'Every 5 Days':
+            dosesPerMonth += 6;
+            break;
+          case 'Every 6 Days':
+            dosesPerMonth += 5;
+            break;
+          case 'Weekly':
+            // If specific days are selected, count them
+            if (product.daysOfWeek && product.daysOfWeek.length > 0) {
+              dosesPerMonth += product.daysOfWeek.length * 4; // Approximate 4 weeks per month
+            } else {
+              dosesPerMonth += 4;
+            }
+            break;
+          case 'Bi-Weekly':
+            if (product.daysOfWeek && product.daysOfWeek.length > 0) {
+              dosesPerMonth += product.daysOfWeek.length * 2; // Approximate 2 doses per month
+            } else {
+              dosesPerMonth += 2;
+            }
+            break;
+          case 'Monthly':
+            dosesPerMonth += 1;
+            break;
+          default:
+            break;
+        }
+      });
 
       const totalDoseMg = product.doseMg * dosesPerMonth;
       const monthsSupply = totalDoseMg > 0 ? inv.quantity / totalDoseMg : 0;
       const daysRemaining = monthsSupply * 30;
 
-      if (monthsSupply < 0.5) {
+      // Alert if less than 3 months' supply
+      if (monthsSupply < 3) {
         return {
           productId: product.id,
           productName: product.name,
@@ -187,7 +209,7 @@ export default function DashboardScreen() {
             >
               <Text style={styles.summaryNumber}>{dosesDue.length}</Text>
               <Text style={styles.summaryLabel}>Doses Due</Text>
-              <Text style={styles.summarySubtext}>Next 24h</Text>
+              <Text style={styles.summarySubtext}>Today</Text>
             </Pressable>
 
             <Pressable 
@@ -196,17 +218,17 @@ export default function DashboardScreen() {
             >
               <Text style={styles.summaryNumber}>{lowStockAlerts.length}</Text>
               <Text style={styles.summaryLabel}>Low Stock</Text>
-              <Text style={styles.summarySubtext}>Alerts</Text>
+              <Text style={styles.summarySubtext}>&lt;3 months</Text>
             </Pressable>
           </View>
 
-          {/* Doses Due in Next 24 Hours */}
+          {/* Doses Due Today */}
           <View style={commonStyles.section}>
-            <Text style={commonStyles.sectionTitle}>📅 Doses Due (Next 24h)</Text>
+            <Text style={commonStyles.sectionTitle}>📅 Doses Due Today</Text>
             {dosesDue.length === 0 ? (
               <View style={styles.emptyCard}>
                 <IconSymbol name="checkmark.circle" size={32} color={colors.success} />
-                <Text style={styles.emptyText}>All caught up! No doses due in the next 24 hours.</Text>
+                <Text style={styles.emptyText}>All caught up! No doses due today.</Text>
               </View>
             ) : (
               <Pressable onPress={() => router.push('/(tabs)/(home)/calendar')}>
@@ -216,7 +238,7 @@ export default function DashboardScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={commonStyles.cardTitle}>{dose.productName}</Text>
                         <Text style={commonStyles.cardSubtitle}>
-                          {dose.doseMg}mg • {dose.route} • {dose.scheduledTime}
+                          {dose.doseMg}mg • {dose.route} • {dose.timeOfDay || dose.scheduledTime}
                         </Text>
                         <Text style={[commonStyles.cardSubtitle, { fontSize: 12 }]}>
                           {dose.scheduledDate.toLocaleDateString('en-US', {
@@ -252,7 +274,7 @@ export default function DashboardScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={commonStyles.cardTitle}>{alert.productName}</Text>
                         <Text style={[commonStyles.cardSubtitle, { color: colors.alert }]}>
-                          {alert.currentStock}mg remaining • ~{alert.daysRemaining} days left
+                          {alert.currentStock}mg remaining • ~{alert.monthsSupply.toFixed(1)} months left
                         </Text>
                       </View>
                       <IconSymbol name="exclamationmark.triangle.fill" size={24} color={colors.alert} />

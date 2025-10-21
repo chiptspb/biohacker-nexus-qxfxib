@@ -2,7 +2,7 @@
 export type Gender = 'M' | 'F' | 'Other';
 export type Units = 'mg' | 'mcg' | 'ml' | 'IU';
 export type Route = 'SubQ' | 'IM' | 'Oral' | 'Nasal' | 'Topical' | 'Vaginal';
-export type Frequency = 'Daily' | 'Every Other Day' | 'Every 3 Days' | 'Every 4 Days' | 'Every 5 Days' | 'Every 6 Days' | 'Weekly' | 'Bi-Weekly' | 'Monthly';
+export type Frequency = 'AM Daily' | 'PM Daily' | 'Daily' | 'Every Other Day' | 'Every 3 Days' | 'Every 4 Days' | 'Every 5 Days' | 'Every 6 Days' | 'Weekly' | 'Bi-Weekly' | 'Monthly';
 export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun';
 export type MedicationType = 'GLP-1' | 'Other Peptide' | 'Hormone';
 
@@ -25,6 +25,7 @@ export interface Product {
   medicationType?: MedicationType;
   doseMg: number;
   frequency: Frequency;
+  frequencies?: Frequency[]; // Support multiple frequencies (e.g., both AM Daily and PM Daily)
   route: Route;
   schedule?: string;
   daysOfWeek?: DayOfWeek[];
@@ -88,6 +89,7 @@ export interface DoseDue {
   scheduledTime: string;
   scheduledDate: Date;
   isOverdue: boolean;
+  timeOfDay?: 'AM' | 'PM'; // For AM/PM daily doses
 }
 
 export interface ScheduledDose {
@@ -99,4 +101,5 @@ export interface ScheduledDose {
   scheduledDate: string; // ISO date string
   scheduledTime: string;
   completed: boolean;
+  timeOfDay?: 'AM' | 'PM'; // For AM/PM daily doses
 }

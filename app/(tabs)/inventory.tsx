@@ -15,26 +15,53 @@ export default function InventoryScreen() {
     
     if (!product || !inv) return 0;
 
+    // Calculate total doses per month based on all frequencies
+    const frequencies = product.frequencies || [product.frequency];
     let dosesPerMonth = 0;
-    switch (product.frequency) {
-      case 'Daily':
-        dosesPerMonth = 30;
-        break;
-      case 'Every Other Day':
-        dosesPerMonth = 15;
-        break;
-      case 'Weekly':
-        dosesPerMonth = 4;
-        break;
-      case 'Bi-Weekly':
-        dosesPerMonth = 2;
-        break;
-      case 'Monthly':
-        dosesPerMonth = 1;
-        break;
-      default:
-        dosesPerMonth = 0;
-    }
+    
+    frequencies.forEach(freq => {
+      switch (freq) {
+        case 'AM Daily':
+        case 'PM Daily':
+        case 'Daily':
+          dosesPerMonth += 30;
+          break;
+        case 'Every Other Day':
+          dosesPerMonth += 15;
+          break;
+        case 'Every 3 Days':
+          dosesPerMonth += 10;
+          break;
+        case 'Every 4 Days':
+          dosesPerMonth += 7.5;
+          break;
+        case 'Every 5 Days':
+          dosesPerMonth += 6;
+          break;
+        case 'Every 6 Days':
+          dosesPerMonth += 5;
+          break;
+        case 'Weekly':
+          if (product.daysOfWeek && product.daysOfWeek.length > 0) {
+            dosesPerMonth += product.daysOfWeek.length * 4;
+          } else {
+            dosesPerMonth += 4;
+          }
+          break;
+        case 'Bi-Weekly':
+          if (product.daysOfWeek && product.daysOfWeek.length > 0) {
+            dosesPerMonth += product.daysOfWeek.length * 2;
+          } else {
+            dosesPerMonth += 2;
+          }
+          break;
+        case 'Monthly':
+          dosesPerMonth += 1;
+          break;
+        default:
+          break;
+      }
+    });
 
     const totalDoseMg = product.doseMg * dosesPerMonth;
     return totalDoseMg > 0 ? inv.quantity / totalDoseMg : 0;
@@ -71,7 +98,7 @@ export default function InventoryScreen() {
               {products.map(product => {
                 const inv = inventory.find(i => i.productId === product.id);
                 const monthsSupply = getMonthsSupply(product.id);
-                const isLowStock = monthsSupply < 0.5 && monthsSupply > 0;
+                const isLowStock = monthsSupply < 3 && monthsSupply > 0;
                 const isOutOfStock = !inv || inv.quantity <= 0;
 
                 return (
@@ -88,7 +115,7 @@ export default function InventoryScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={commonStyles.cardTitle}>{product.name}</Text>
                         <Text style={commonStyles.cardSubtitle}>
-                          {product.doseMg}mg per dose • {product.frequency}
+                          {product.doseMg}mg per dose • {product.frequencies?.join(', ') || product.frequency}
                         </Text>
                       </View>
                       <IconSymbol 
@@ -116,13 +143,13 @@ export default function InventoryScreen() {
                           <View style={styles.supplyBadge}>
                             <View style={[
                               styles.supplyIndicator,
-                              monthsSupply >= 1 ? { backgroundColor: colors.success } :
-                              monthsSupply >= 0.5 ? { backgroundColor: colors.highlight } :
+                              monthsSupply >= 3 ? { backgroundColor: colors.success } :
+                              monthsSupply >= 1 ? { backgroundColor: colors.highlight } :
                               { backgroundColor: colors.alert }
                             ]} />
                             <Text style={[
                               styles.inventoryValue,
-                              monthsSupply < 0.5 && { color: colors.alert },
+                              monthsSupply < 3 && { color: colors.alert },
                             ]}>
                               {monthsSupply.toFixed(1)} months
                             </Text>
@@ -148,7 +175,7 @@ export default function InventoryScreen() {
                     {isLowStock && (
                       <View style={styles.warningBanner}>
                         <IconSymbol name="exclamationmark.triangle.fill" size={16} color={colors.highlight} />
-                        <Text style={styles.warningText}>Low stock - consider reordering</Text>
+                        <Text style={styles.warningText}>Low stock - less than 3 months remaining</Text>
                       </View>
                     )}
 
