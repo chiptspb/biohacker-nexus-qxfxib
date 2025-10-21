@@ -1,29 +1,34 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { colors, commonStyles, buttonStyles } from '@/styles/commonStyles';
 import { useApp } from '@/contexts/AppContext';
-import { Frequency, Route, DayOfWeek } from '@/types';
+import { Frequency, Route, DayOfWeek, MedicationType, ScheduledDose } from '@/types';
 import Toast, { ToastType } from '@/components/Toast';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const FREQUENCIES: Frequency[] = ['Daily', 'Every Other Day', 'Weekly', 'Bi-Weekly', 'Monthly', 'As Needed'];
 const ROUTES: Route[] = ['SubQ', 'IM', 'Oral', 'Nasal', 'Topical', 'Vaginal'];
 const DAYS_OF_WEEK: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const MEDICATION_TYPES: MedicationType[] = ['GLP-1', 'Other Peptide', 'Hormone'];
 
 export default function EditProductScreen() {
   const { productId } = useLocalSearchParams<{ productId: string }>();
-  const { products, updateProduct } = useApp();
+  const { products, updateProduct, scheduledDoses, setScheduledDoses, addScheduledDose } = useApp();
   
   const product = products.find(p => p.id === productId);
 
   const [name, setName] = useState(product?.name || '');
   const [category, setCategory] = useState(product?.category || '');
+  const [medicationType, setMedicationType] = useState<MedicationType>(product?.medicationType || 'Other Peptide');
   const [doseMg, setDoseMg] = useState(product?.doseMg.toString() || '');
   const [frequency, setFrequency] = useState<Frequency>(product?.frequency || 'Daily');
   const [route, setRoute] = useState<Route>(product?.route || 'SubQ');
   const [schedule, setSchedule] = useState(product?.schedule || '');
   const [daysOfWeek, setDaysOfWeek] = useState<DayOfWeek[]>(product?.daysOfWeek || []);
+  const [startingDate, setStartingDate] = useState(product?.startingDate ? new Date(product.startingDate) : new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [notes, setNotes] = useState(product?.notes || '');
 
   // UI state
@@ -44,6 +49,70 @@ export default function EditProductScreen() {
     } else {
       setDaysOfWeek([...daysOfWeek, day]);
     }
+  };
+
+  const calculateScheduledDoses = (prodId: string, productName: string, doseAmount: number, routeType: Route): ScheduledDose[] => {
+    const doses: ScheduledDose[] = [];
+    const start = new Date(startingDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Generate doses for the next 90 days
+    const endDate = new Date(start);
+    endDate.setDate(endDate.getDate() + 90);
+
+    let currentDate = new Date(start);
+    
+    while (currentDate <= endDate) {
+      let shouldAddDose = false;
+
+      switch (frequency) {
+        case 'Daily':
+          shouldAddDose = true;
+          break;
+        case 'Every Other Day':
+          const daysDiff = Math.floor((currentDate.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+          shouldAddDose = daysDiff % 2 === 0;
+          break;
+        case 'Weekly':
+          if (daysOfWeek.length > 0) {
+            const dayNames: DayOfWeek[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const currentDay = dayNames[currentDate.getDay()];
+            shouldAddDose = daysOfWeek.includes(currentDay);
+          } else {
+            const weeksDiff = Math.floor((currentDate.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 7));
+            shouldAddDose = currentDate.getDay() === start.getDay() && weeksDiff >= 0;
+          }
+          break;
+        case 'Bi-Weekly':
+          const biWeeksDiff = Math.floor((currentDate.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+          shouldAddDose = biWeeksDiff % 14 === 0;
+          break;
+        case 'Monthly':
+          shouldAddDose = currentDate.getDate() === start.getDate();
+          break;
+        case 'As Needed':
+          shouldAddDose = false;
+          break;
+      }
+
+      if (shouldAddDose) {
+        doses.push({
+          id: `${prodId}-${currentDate.toISOString()}`,
+          productId: prodId,
+          productName,
+          doseMg: doseAmount,
+          route: routeType,
+          scheduledDate: currentDate.toISOString().split('T')[0],
+          scheduledTime: '09:00',
+          completed: false,
+        });
+      }
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return doses;
   };
 
   if (!product) {
@@ -76,14 +145,21 @@ export default function EditProductScreen() {
         ...product,
         name: name.trim(),
         category: category.trim() || 'General',
+        medicationType,
         doseMg: doseNum,
         frequency,
         route,
         schedule: schedule.trim() || undefined,
         daysOfWeek: daysOfWeek.length > 0 ? daysOfWeek : undefined,
+        startingDate: startingDate.toISOString().split('T')[0],
         notes: notes.trim() || undefined,
         updatedAt: new Date(),
       });
+
+      // Recalculate scheduled doses
+      const existingDoses = scheduledDoses.filter(d => d.productId !== productId);
+      const newDoses = calculateScheduledDoses(productId, name.trim(), doseNum, route);
+      setScheduledDoses([...existingDoses, ...newDoses]);
 
       showToast('Product updated successfully!', 'success');
       
@@ -128,12 +204,38 @@ export default function EditProductScreen() {
           </View>
 
           <View style={commonStyles.section}>
+            <Text style={commonStyles.label}>Medication Type *</Text>
+            <View style={styles.optionsGrid}>
+              {MEDICATION_TYPES.map(type => (
+                <Pressable
+                  key={type}
+                  style={[
+                    styles.option,
+                    medicationType === type && styles.optionSelected,
+                  ]}
+                  onPress={() => setMedicationType(type)}
+                  disabled={isSaving}
+                >
+                  <Text
+                    style={[
+                      styles.optionText,
+                      medicationType === type && styles.optionTextSelected,
+                    ]}
+                  >
+                    {type}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          <View style={commonStyles.section}>
             <Text style={commonStyles.label}>Category (optional)</Text>
             <TextInput
               style={commonStyles.input}
               value={category}
               onChangeText={setCategory}
-              placeholder="e.g., GLP-1, Peptide, TRT"
+              placeholder="e.g., Weight Loss, Recovery"
               placeholderTextColor={colors.textSecondary}
               editable={!isSaving}
             />
@@ -202,6 +304,32 @@ export default function EditProductScreen() {
                 </Pressable>
               ))}
             </View>
+          </View>
+
+          <View style={commonStyles.section}>
+            <Text style={commonStyles.label}>Starting Date *</Text>
+            <Pressable 
+              style={commonStyles.input} 
+              onPress={() => setShowDatePicker(true)}
+              disabled={isSaving}
+            >
+              <Text style={{ color: colors.text, fontSize: 16 }}>
+                {startingDate.toLocaleDateString()}
+              </Text>
+            </Pressable>
+            {showDatePicker && (
+              <DateTimePicker
+                value={startingDate}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(event, selectedDate) => {
+                  setShowDatePicker(Platform.OS === 'ios');
+                  if (selectedDate) {
+                    setStartingDate(selectedDate);
+                  }
+                }}
+              />
+            )}
           </View>
 
           <View style={commonStyles.section}>

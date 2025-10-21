@@ -5,11 +5,11 @@ import { Stack, router } from 'expo-router';
 import { colors, commonStyles, buttonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useApp } from '@/contexts/AppContext';
-import { DoseDue, LowStockAlert, DayOfWeek } from '@/types';
+import { DoseDue, LowStockAlert } from '@/types';
 import PremiumModal from '@/components/PremiumModal';
 
 export default function DashboardScreen() {
-  const { user, products, inventory, doseLogs, isPremium, canAddProduct } = useApp();
+  const { user, products, inventory, doseLogs, scheduledDoses, isPremium, canAddProduct } = useApp();
   const [refreshing, setRefreshing] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
 
@@ -19,97 +19,34 @@ export default function DashboardScreen() {
     setTimeout(() => setRefreshing(false), 1000);
   };
 
-  // Helper function to get current day of week as DayOfWeek type
-  const getCurrentDayOfWeek = (): DayOfWeek => {
-    const days: DayOfWeek[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const today = new Date();
-    return days[today.getDay()];
-  };
-
-  // Calculate doses due today
+  // Calculate doses due in next 24 hours
   const dosesDue = useMemo((): DoseDue[] => {
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    const currentDay = getCurrentDayOfWeek();
+    const now = new Date();
+    const next24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     
-    return products.map(product => {
-      // Check if dose was already logged today
-      const loggedToday = doseLogs.some(log => {
-        const logDate = new Date(log.date).toISOString().split('T')[0];
-        return log.productId === product.id && logDate === todayStr;
-      });
-
-      if (loggedToday) return null;
-
-      // Check if today is a scheduled day (if daysOfWeek is specified)
-      if (product.daysOfWeek && product.daysOfWeek.length > 0) {
-        if (!product.daysOfWeek.includes(currentDay)) {
-          return null; // Not scheduled for today
-        }
-      }
-
-      // Determine if dose is due based on frequency
-      let isDue = false;
-      let scheduledTime = '09:00';
-
-      switch (product.frequency) {
-        case 'Daily':
-          isDue = true;
-          break;
-        case 'Every Other Day':
-          isDue = today.getDate() % 2 === 0;
-          break;
-        case 'Weekly':
-          // If daysOfWeek is specified, already checked above
-          // Otherwise, default to Monday
-          isDue = product.daysOfWeek ? true : today.getDay() === 1;
-          break;
-        case 'Bi-Weekly':
-          // Check if it's been 2 weeks since last dose
-          const lastLog = doseLogs
-            .filter(log => log.productId === product.id)
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-          
-          if (!lastLog) {
-            isDue = true;
-          } else {
-            const daysSinceLastDose = Math.floor(
-              (today.getTime() - new Date(lastLog.date).getTime()) / (1000 * 60 * 60 * 24)
-            );
-            isDue = daysSinceLastDose >= 14;
-          }
-          break;
-        case 'Monthly':
-          // Check if it's been a month since last dose
-          const lastMonthlyLog = doseLogs
-            .filter(log => log.productId === product.id)
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-          
-          if (!lastMonthlyLog) {
-            isDue = true;
-          } else {
-            const daysSinceLastMonthlyDose = Math.floor(
-              (today.getTime() - new Date(lastMonthlyLog.date).getTime()) / (1000 * 60 * 60 * 24)
-            );
-            isDue = daysSinceLastMonthlyDose >= 30;
-          }
-          break;
-        default:
-          isDue = false;
-      }
-
-      if (!isDue) return null;
-
-      return {
-        productId: product.id,
-        productName: product.name,
-        doseMg: product.doseMg,
-        route: product.route,
-        scheduledTime,
-        isOverdue: false,
-      };
-    }).filter(Boolean) as DoseDue[];
-  }, [products, doseLogs]);
+    return scheduledDoses
+      .filter(dose => {
+        if (dose.completed) return false;
+        
+        const doseDateTime = new Date(`${dose.scheduledDate}T${dose.scheduledTime}`);
+        return doseDateTime >= now && doseDateTime <= next24Hours;
+      })
+      .map(dose => {
+        const doseDateTime = new Date(`${dose.scheduledDate}T${dose.scheduledTime}`);
+        const isOverdue = doseDateTime < now;
+        
+        return {
+          productId: dose.productId,
+          productName: dose.productName,
+          doseMg: dose.doseMg,
+          route: dose.route,
+          scheduledTime: dose.scheduledTime,
+          scheduledDate: doseDateTime,
+          isOverdue,
+        };
+      })
+      .sort((a, b) => a.scheduledDate.getTime() - b.scheduledDate.getTime());
+  }, [scheduledDoses]);
 
   // Calculate low stock alerts
   const lowStockAlerts = useMemo((): LowStockAlert[] => {
@@ -215,51 +152,70 @@ export default function DashboardScreen() {
 
           {/* Summary Cards */}
           <View style={styles.summaryRow}>
-            <View style={[styles.summaryCard, { backgroundColor: colors.primary }]}>
+            <Pressable 
+              style={[styles.summaryCard, { backgroundColor: colors.primary }]}
+              onPress={() => router.push('/(tabs)/medications')}
+            >
               <Text style={styles.summaryNumber}>{products.length}</Text>
               <Text style={styles.summaryLabel}>Products</Text>
               {!isPremium && (
                 <Text style={styles.summarySubtext}>2 max (free)</Text>
               )}
-            </View>
+            </Pressable>
 
-            <View style={[styles.summaryCard, { backgroundColor: colors.success }]}>
+            <Pressable 
+              style={[styles.summaryCard, { backgroundColor: colors.success }]}
+              onPress={() => router.push('/(tabs)/(home)/calendar')}
+            >
               <Text style={styles.summaryNumber}>{dosesDue.length}</Text>
               <Text style={styles.summaryLabel}>Doses Due</Text>
-              <Text style={styles.summarySubtext}>Today</Text>
-            </View>
+              <Text style={styles.summarySubtext}>Next 24h</Text>
+            </Pressable>
 
-            <View style={[styles.summaryCard, { backgroundColor: colors.alert }]}>
+            <Pressable 
+              style={[styles.summaryCard, { backgroundColor: colors.alert }]}
+              onPress={() => router.push('/(tabs)/inventory')}
+            >
               <Text style={styles.summaryNumber}>{lowStockAlerts.length}</Text>
               <Text style={styles.summaryLabel}>Low Stock</Text>
               <Text style={styles.summarySubtext}>Alerts</Text>
-            </View>
+            </Pressable>
           </View>
 
-          {/* Doses Due Today */}
+          {/* Doses Due in Next 24 Hours */}
           <View style={commonStyles.section}>
-            <Text style={commonStyles.sectionTitle}>📅 Doses Due Today</Text>
+            <Text style={commonStyles.sectionTitle}>📅 Doses Due (Next 24h)</Text>
             {dosesDue.length === 0 ? (
               <View style={styles.emptyCard}>
                 <IconSymbol name="checkmark.circle" size={32} color={colors.success} />
-                <Text style={styles.emptyText}>All caught up! No doses due today.</Text>
+                <Text style={styles.emptyText}>All caught up! No doses due in the next 24 hours.</Text>
               </View>
             ) : (
-              dosesDue.map(dose => (
-                <View key={dose.productId} style={commonStyles.card}>
-                  <View style={commonStyles.cardHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={commonStyles.cardTitle}>{dose.productName}</Text>
-                      <Text style={commonStyles.cardSubtitle}>
-                        {dose.doseMg}mg • {dose.route} • {dose.scheduledTime}
-                      </Text>
-                    </View>
-                    <View style={[styles.statusBadge, { backgroundColor: colors.success }]}>
-                      <Text style={styles.statusText}>Due</Text>
+              <Pressable onPress={() => router.push('/(tabs)/(home)/calendar')}>
+                {dosesDue.map(dose => (
+                  <View key={`${dose.productId}-${dose.scheduledDate.toISOString()}`} style={commonStyles.card}>
+                    <View style={commonStyles.cardHeader}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={commonStyles.cardTitle}>{dose.productName}</Text>
+                        <Text style={commonStyles.cardSubtitle}>
+                          {dose.doseMg}mg • {dose.route} • {dose.scheduledTime}
+                        </Text>
+                        <Text style={[commonStyles.cardSubtitle, { fontSize: 12 }]}>
+                          {dose.scheduledDate.toLocaleDateString()}
+                        </Text>
+                      </View>
+                      <View style={[
+                        styles.statusBadge, 
+                        { backgroundColor: dose.isOverdue ? colors.alert : colors.success }
+                      ]}>
+                        <Text style={styles.statusText}>
+                          {dose.isOverdue ? 'Overdue' : 'Due'}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                </View>
-              ))
+                ))}
+              </Pressable>
             )}
           </View>
 
@@ -267,19 +223,21 @@ export default function DashboardScreen() {
           {lowStockAlerts.length > 0 && (
             <View style={commonStyles.section}>
               <Text style={commonStyles.sectionTitle}>⚠️ Low Stock Alerts</Text>
-              {lowStockAlerts.map(alert => (
-                <View key={alert.productId} style={[commonStyles.card, styles.alertCard]}>
-                  <View style={commonStyles.cardHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={commonStyles.cardTitle}>{alert.productName}</Text>
-                      <Text style={[commonStyles.cardSubtitle, { color: colors.alert }]}>
-                        {alert.currentStock}mg remaining • ~{alert.daysRemaining} days left
-                      </Text>
+              <Pressable onPress={() => router.push('/(tabs)/inventory')}>
+                {lowStockAlerts.map(alert => (
+                  <View key={alert.productId} style={[commonStyles.card, styles.alertCard]}>
+                    <View style={commonStyles.cardHeader}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={commonStyles.cardTitle}>{alert.productName}</Text>
+                        <Text style={[commonStyles.cardSubtitle, { color: colors.alert }]}>
+                          {alert.currentStock}mg remaining • ~{alert.daysRemaining} days left
+                        </Text>
+                      </View>
+                      <IconSymbol name="exclamationmark.triangle.fill" size={24} color={colors.alert} />
                     </View>
-                    <IconSymbol name="exclamationmark.triangle.fill" size={24} color={colors.alert} />
                   </View>
-                </View>
-              ))}
+                ))}
+              </Pressable>
             </View>
           )}
 

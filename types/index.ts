@@ -4,6 +4,7 @@ export type Units = 'mg' | 'mcg' | 'ml' | 'IU';
 export type Route = 'SubQ' | 'IM' | 'Oral' | 'Nasal' | 'Topical' | 'Vaginal';
 export type Frequency = 'Daily' | 'Every Other Day' | 'Weekly' | 'Bi-Weekly' | 'Monthly' | 'As Needed';
 export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun';
+export type MedicationType = 'GLP-1' | 'Other Peptide' | 'Hormone';
 
 export interface UserProfile {
   id: string;
@@ -21,11 +22,13 @@ export interface Product {
   userId: string;
   name: string;
   category: string;
+  medicationType?: MedicationType;
   doseMg: number;
   frequency: Frequency;
   route: Route;
   schedule?: string;
   daysOfWeek?: DayOfWeek[];
+  startingDate?: string; // ISO date string
   notes?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -83,5 +86,17 @@ export interface DoseDue {
   doseMg: number;
   route: Route;
   scheduledTime: string;
+  scheduledDate: Date;
   isOverdue: boolean;
+}
+
+export interface ScheduledDose {
+  id: string;
+  productId: string;
+  productName: string;
+  doseMg: number;
+  route: Route;
+  scheduledDate: string; // ISO date string
+  scheduledTime: string;
+  completed: boolean;
 }

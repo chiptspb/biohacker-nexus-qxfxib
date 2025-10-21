@@ -1,26 +1,31 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { colors, commonStyles, buttonStyles } from '@/styles/commonStyles';
 import { useApp } from '@/contexts/AppContext';
-import { Product, Inventory, Frequency, Route, Units, DayOfWeek } from '@/types';
+import { Product, Inventory, Frequency, Route, Units, DayOfWeek, MedicationType, ScheduledDose } from '@/types';
 import Toast, { ToastType } from '@/components/Toast';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const FREQUENCIES: Frequency[] = ['Daily', 'Every Other Day', 'Weekly', 'Bi-Weekly', 'Monthly', 'As Needed'];
 const ROUTES: Route[] = ['SubQ', 'IM', 'Oral', 'Nasal', 'Topical', 'Vaginal'];
 const UNITS: Units[] = ['mg', 'mcg', 'ml', 'IU'];
 const DAYS_OF_WEEK: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const MEDICATION_TYPES: MedicationType[] = ['GLP-1', 'Other Peptide', 'Hormone'];
 
 export default function AddProductScreen() {
-  const { user, addProduct, updateInventory } = useApp();
+  const { user, addProduct, updateInventory, addScheduledDose } = useApp();
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
+  const [medicationType, setMedicationType] = useState<MedicationType>('Other Peptide');
   const [doseMg, setDoseMg] = useState('');
   const [frequency, setFrequency] = useState<Frequency>('Daily');
   const [route, setRoute] = useState<Route>('SubQ');
   const [schedule, setSchedule] = useState('');
   const [daysOfWeek, setDaysOfWeek] = useState<DayOfWeek[]>([]);
+  const [startingDate, setStartingDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [notes, setNotes] = useState('');
   
   // Inventory fields
@@ -49,6 +54,70 @@ export default function AddProductScreen() {
     }
   };
 
+  const calculateScheduledDoses = (productId: string, productName: string, doseAmount: number, routeType: Route): ScheduledDose[] => {
+    const doses: ScheduledDose[] = [];
+    const start = new Date(startingDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Generate doses for the next 90 days
+    const endDate = new Date(start);
+    endDate.setDate(endDate.getDate() + 90);
+
+    let currentDate = new Date(start);
+    
+    while (currentDate <= endDate) {
+      let shouldAddDose = false;
+
+      switch (frequency) {
+        case 'Daily':
+          shouldAddDose = true;
+          break;
+        case 'Every Other Day':
+          const daysDiff = Math.floor((currentDate.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+          shouldAddDose = daysDiff % 2 === 0;
+          break;
+        case 'Weekly':
+          if (daysOfWeek.length > 0) {
+            const dayNames: DayOfWeek[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const currentDay = dayNames[currentDate.getDay()];
+            shouldAddDose = daysOfWeek.includes(currentDay);
+          } else {
+            const weeksDiff = Math.floor((currentDate.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 7));
+            shouldAddDose = currentDate.getDay() === start.getDay() && weeksDiff >= 0;
+          }
+          break;
+        case 'Bi-Weekly':
+          const biWeeksDiff = Math.floor((currentDate.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+          shouldAddDose = biWeeksDiff % 14 === 0;
+          break;
+        case 'Monthly':
+          shouldAddDose = currentDate.getDate() === start.getDate();
+          break;
+        case 'As Needed':
+          shouldAddDose = false;
+          break;
+      }
+
+      if (shouldAddDose) {
+        doses.push({
+          id: `${productId}-${currentDate.toISOString()}`,
+          productId,
+          productName,
+          doseMg: doseAmount,
+          route: routeType,
+          scheduledDate: currentDate.toISOString().split('T')[0],
+          scheduledTime: '09:00',
+          completed: false,
+        });
+      }
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return doses;
+  };
+
   const handleSubmit = async () => {
     if (!name.trim() || !doseMg) {
       showToast('Please enter product name and dose amount.', 'error');
@@ -74,11 +143,13 @@ export default function AddProductScreen() {
         userId: user?.id || 'user-1',
         name: name.trim(),
         category: category.trim() || 'General',
+        medicationType,
         doseMg: doseNum,
         frequency,
         route,
         schedule: schedule.trim() || undefined,
         daysOfWeek: daysOfWeek.length > 0 ? daysOfWeek : undefined,
+        startingDate: startingDate.toISOString().split('T')[0],
         notes: notes.trim() || undefined,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -103,6 +174,10 @@ export default function AddProductScreen() {
           updateInventory(inventory);
         }
       }
+
+      // Calculate and add scheduled doses
+      const scheduledDoses = calculateScheduledDoses(productId, product.name, doseNum, route);
+      scheduledDoses.forEach(dose => addScheduledDose(dose));
 
       showToast('Medication added successfully!', 'success');
       
@@ -150,12 +225,38 @@ export default function AddProductScreen() {
           </View>
 
           <View style={commonStyles.section}>
+            <Text style={commonStyles.label}>Medication Type *</Text>
+            <View style={styles.optionsGrid}>
+              {MEDICATION_TYPES.map(type => (
+                <Pressable
+                  key={type}
+                  style={[
+                    styles.option,
+                    medicationType === type && styles.optionSelected,
+                  ]}
+                  onPress={() => setMedicationType(type)}
+                  disabled={isSaving}
+                >
+                  <Text
+                    style={[
+                      styles.optionText,
+                      medicationType === type && styles.optionTextSelected,
+                    ]}
+                  >
+                    {type}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          <View style={commonStyles.section}>
             <Text style={commonStyles.label}>Category (optional)</Text>
             <TextInput
               style={commonStyles.input}
               value={category}
               onChangeText={setCategory}
-              placeholder="e.g., GLP-1, Peptide, TRT"
+              placeholder="e.g., Weight Loss, Recovery"
               placeholderTextColor={colors.textSecondary}
               editable={!isSaving}
             />
@@ -224,6 +325,32 @@ export default function AddProductScreen() {
                 </Pressable>
               ))}
             </View>
+          </View>
+
+          <View style={commonStyles.section}>
+            <Text style={commonStyles.label}>Starting Date *</Text>
+            <Pressable 
+              style={commonStyles.input} 
+              onPress={() => setShowDatePicker(true)}
+              disabled={isSaving}
+            >
+              <Text style={{ color: colors.text, fontSize: 16 }}>
+                {startingDate.toLocaleDateString()}
+              </Text>
+            </Pressable>
+            {showDatePicker && (
+              <DateTimePicker
+                value={startingDate}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(event, selectedDate) => {
+                  setShowDatePicker(Platform.OS === 'ios');
+                  if (selectedDate) {
+                    setStartingDate(selectedDate);
+                  }
+                }}
+              />
+            )}
           </View>
 
           <View style={commonStyles.section}>

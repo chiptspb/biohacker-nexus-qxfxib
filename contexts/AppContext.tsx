@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { UserProfile, Product, Inventory, DoseLog } from '@/types';
+import { UserProfile, Product, Inventory, DoseLog, ScheduledDose } from '@/types';
 
 interface AppContextType {
   user: UserProfile | null;
@@ -12,6 +12,8 @@ interface AppContextType {
   setInventory: (inventory: Inventory[]) => void;
   doseLogs: DoseLog[];
   setDoseLogs: (logs: DoseLog[]) => void;
+  scheduledDoses: ScheduledDose[];
+  setScheduledDoses: (doses: ScheduledDose[]) => void;
   isPremium: boolean;
   isLoading: boolean;
   hasSeenDisclaimer: boolean;
@@ -23,6 +25,7 @@ interface AppContextType {
   deleteProduct: (productId: string) => void;
   addDoseLog: (log: DoseLog) => void;
   updateInventory: (inv: Inventory) => void;
+  addScheduledDose: (dose: ScheduledDose) => void;
   canAddProduct: () => boolean;
   logout: () => void;
 }
@@ -34,6 +37,7 @@ const STORAGE_KEYS = {
   PRODUCTS: '@biohacker_products',
   INVENTORY: '@biohacker_inventory',
   DOSE_LOGS: '@biohacker_dose_logs',
+  SCHEDULED_DOSES: '@biohacker_scheduled_doses',
   DISCLAIMER: '@biohacker_disclaimer',
   ONBOARDING: '@biohacker_onboarding',
 };
@@ -43,6 +47,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [inventory, setInventory] = useState<Inventory[]>([]);
   const [doseLogs, setDoseLogs] = useState<DoseLog[]>([]);
+  const [scheduledDoses, setScheduledDoses] = useState<ScheduledDose[]>([]);
   const [hasSeenDisclaimer, setHasSeenDisclaimer] = useState(false);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -59,7 +64,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!isLoading && user) {
       saveData();
     }
-  }, [user, products, inventory, doseLogs, hasSeenDisclaimer, hasCompletedOnboarding]);
+  }, [user, products, inventory, doseLogs, scheduledDoses, hasSeenDisclaimer, hasCompletedOnboarding]);
 
   const loadData = async () => {
     try {
@@ -68,6 +73,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         productsData,
         inventoryData,
         doseLogsData,
+        scheduledDosesData,
         disclaimerData,
         onboardingData,
       ] = await Promise.all([
@@ -75,6 +81,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         AsyncStorage.getItem(STORAGE_KEYS.PRODUCTS),
         AsyncStorage.getItem(STORAGE_KEYS.INVENTORY),
         AsyncStorage.getItem(STORAGE_KEYS.DOSE_LOGS),
+        AsyncStorage.getItem(STORAGE_KEYS.SCHEDULED_DOSES),
         AsyncStorage.getItem(STORAGE_KEYS.DISCLAIMER),
         AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
       ]);
@@ -83,6 +90,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (productsData) setProducts(JSON.parse(productsData));
       if (inventoryData) setInventory(JSON.parse(inventoryData));
       if (doseLogsData) setDoseLogs(JSON.parse(doseLogsData));
+      if (scheduledDosesData) setScheduledDoses(JSON.parse(scheduledDosesData));
       if (disclaimerData) setHasSeenDisclaimer(JSON.parse(disclaimerData));
       if (onboardingData) setHasCompletedOnboarding(JSON.parse(onboardingData));
     } catch (error) {
@@ -99,6 +107,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         AsyncStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products)),
         AsyncStorage.setItem(STORAGE_KEYS.INVENTORY, JSON.stringify(inventory)),
         AsyncStorage.setItem(STORAGE_KEYS.DOSE_LOGS, JSON.stringify(doseLogs)),
+        AsyncStorage.setItem(STORAGE_KEYS.SCHEDULED_DOSES, JSON.stringify(scheduledDoses)),
         AsyncStorage.setItem(STORAGE_KEYS.DISCLAIMER, JSON.stringify(hasSeenDisclaimer)),
         AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, JSON.stringify(hasCompletedOnboarding)),
       ]);
@@ -119,6 +128,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setProducts(products.filter(p => p.id !== productId));
     setInventory(inventory.filter(i => i.productId !== productId));
     setDoseLogs(doseLogs.filter(l => l.productId !== productId));
+    setScheduledDoses(scheduledDoses.filter(d => d.productId !== productId));
   };
 
   const addDoseLog = (log: DoseLog) => {
@@ -136,6 +146,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const addScheduledDose = (dose: ScheduledDose) => {
+    setScheduledDoses([...scheduledDoses, dose]);
+  };
+
   const canAddProduct = () => {
     if (isPremium) return true;
     return products.length < 2;
@@ -148,6 +162,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         STORAGE_KEYS.PRODUCTS,
         STORAGE_KEYS.INVENTORY,
         STORAGE_KEYS.DOSE_LOGS,
+        STORAGE_KEYS.SCHEDULED_DOSES,
         STORAGE_KEYS.DISCLAIMER,
         STORAGE_KEYS.ONBOARDING,
       ]);
@@ -155,6 +170,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setProducts([]);
       setInventory([]);
       setDoseLogs([]);
+      setScheduledDoses([]);
       setHasSeenDisclaimer(false);
       setHasCompletedOnboarding(false);
     } catch (error) {
@@ -173,6 +189,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setInventory,
         doseLogs,
         setDoseLogs,
+        scheduledDoses,
+        setScheduledDoses,
         isPremium,
         isLoading,
         hasSeenDisclaimer,
@@ -184,6 +202,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         deleteProduct,
         addDoseLog,
         updateInventory,
+        addScheduledDose,
         canAddProduct,
         logout,
       }}
