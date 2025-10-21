@@ -31,6 +31,13 @@ export default function PremiumModal({ visible, onClose, onUpgrade }: PremiumMod
           </View>
 
           <ScrollView style={styles.content}>
+            <View style={styles.limitBanner}>
+              <IconSymbol name="exclamationmark.circle.fill" size={20} color={colors.highlight} />
+              <Text style={styles.limitText}>
+                Free tier limits 1 medication—upgrade for all.
+              </Text>
+            </View>
+
             <View style={styles.feature}>
               <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
               <Text style={styles.featureText}>Unlimited products & protocols</Text>
@@ -57,8 +64,9 @@ export default function PremiumModal({ visible, onClose, onUpgrade }: PremiumMod
             </View>
 
             <View style={styles.priceBox}>
-              <Text style={styles.price}>$4.95</Text>
+              <Text style={styles.price}>$4.99</Text>
               <Text style={styles.priceSubtext}>per month</Text>
+              <Text style={styles.priceDetail}>Upgrade to track unlimited medications</Text>
             </View>
 
             <Text style={styles.disclaimer}>
@@ -123,6 +131,24 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 24,
   },
+  limitBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 20,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.highlight,
+  },
+  limitText: {
+    fontSize: 14,
+    color: colors.text,
+    marginLeft: 8,
+    flex: 1,
+    lineHeight: 20,
+    fontWeight: '500',
+  },
   feature: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -150,6 +176,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
     marginTop: 4,
+  },
+  priceDetail: {
+    fontSize: 14,
+    color: colors.text,
+    marginTop: 8,
+    textAlign: 'center',
+    fontWeight: '500',
   },
   disclaimer: {
     fontSize: 12,

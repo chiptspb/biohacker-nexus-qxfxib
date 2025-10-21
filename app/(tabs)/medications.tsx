@@ -114,10 +114,19 @@ export default function MedicationsScreen() {
           </View>
 
           {/* Add Product Button */}
-          <Pressable style={[buttonStyles.highlight, { marginBottom: 24 }]} onPress={handleAddProduct}>
+          <Pressable 
+            style={[
+              buttonStyles.highlight, 
+              { marginBottom: 24 },
+              !canAddProduct() && { opacity: 0.5 }
+            ]} 
+            onPress={handleAddProduct}
+          >
             <View style={styles.buttonContent}>
               <IconSymbol name="plus.circle.fill" size={20} color={colors.text} />
-              <Text style={[buttonStyles.buttonText, { marginLeft: 8 }]}>Add Product</Text>
+              <Text style={[buttonStyles.buttonText, { marginLeft: 8 }]}>
+                {canAddProduct() ? 'Add Product' : 'Add Product (Upgrade Required)'}
+              </Text>
             </View>
           </Pressable>
 
@@ -133,7 +142,7 @@ export default function MedicationsScreen() {
           ) : (
             <View style={commonStyles.section}>
               <Text style={commonStyles.sectionTitle}>
-                Your Products ({products.length}{!isPremium && '/2'})
+                Your Products ({products.length}{!isPremium && products.length >= 1 ? '/1 free' : ''})
               </Text>
               {products.map(product => {
                 const stats = getProductStats(product.id);

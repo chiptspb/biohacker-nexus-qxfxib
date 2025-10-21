@@ -152,7 +152,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const canAddProduct = () => {
     if (isPremium) return true;
-    return products.length < 2;
+    return products.length < 1;
   };
 
   const logout = async () => {

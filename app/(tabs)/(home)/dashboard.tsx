@@ -175,7 +175,9 @@ export default function DashboardScreen() {
               <Text style={styles.summaryNumber}>{products.length}</Text>
               <Text style={styles.summaryLabel}>Products</Text>
               {!isPremium && (
-                <Text style={styles.summarySubtext}>2 max (free)</Text>
+                <Text style={styles.summarySubtext}>
+                  {products.length >= 1 ? '1/1 free' : '1 max (free)'}
+                </Text>
               )}
             </Pressable>
 
@@ -294,7 +296,7 @@ export default function DashboardScreen() {
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.premiumTitle}>Upgrade to Premium</Text>
                 <Text style={styles.premiumSubtext}>
-                  Unlock unlimited products, advanced features, and more!
+                  Track unlimited medications for just $4.99/month!
                 </Text>
               </View>
               <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
