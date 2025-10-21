@@ -122,6 +122,9 @@ export default function CalendarScreen() {
     setCurrentMonth(month.dateString.substring(0, 7));
   };
 
+  // Check if there are any scheduled doses at all
+  const hasScheduledDoses = scheduledDoses.length > 0;
+
   return (
     <>
       <Stack.Screen
@@ -169,21 +172,41 @@ export default function CalendarScreen() {
             />
           </View>
 
+          {/* No Scheduled Doses Message */}
+          {!hasScheduledDoses && (
+            <View style={styles.emptyStateContainer}>
+              <IconSymbol name="calendar.badge.exclamationmark" size={48} color={colors.textSecondary} />
+              <Text style={styles.emptyStateTitle}>No scheduled doses</Text>
+              <Text style={styles.emptyStateText}>
+                Set up protocols in the Medications tab to see your dose schedule here.
+              </Text>
+              <Pressable 
+                style={styles.emptyStateButton}
+                onPress={() => router.push('/(tabs)/medications')}
+              >
+                <IconSymbol name="plus.circle.fill" size={20} color={colors.text} />
+                <Text style={styles.emptyStateButtonText}>Add Medication</Text>
+              </Pressable>
+            </View>
+          )}
+
           {/* Legend */}
-          <View style={styles.legendContainer}>
-            <Text style={styles.legendTitle}>Medications</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.legendScroll}>
-              {productColors.map(pc => (
-                <View key={pc.productId} style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: pc.color }]} />
-                  <Text style={styles.legendText}>{pc.productName}</Text>
-                </View>
-              ))}
-            </ScrollView>
-          </View>
+          {hasScheduledDoses && productColors.length > 0 && (
+            <View style={styles.legendContainer}>
+              <Text style={styles.legendTitle}>Medications</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.legendScroll}>
+                {productColors.map(pc => (
+                  <View key={pc.productId} style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: pc.color }]} />
+                    <Text style={styles.legendText}>{pc.productName}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          )}
 
           {/* Selected Date Doses */}
-          {selectedDate && (
+          {selectedDate && hasScheduledDoses && (
             <View style={styles.selectedDateContainer}>
               <Text style={styles.selectedDateTitle}>
                 {format(parseISO(selectedDate + 'T00:00:00'), 'EEEE, MMMM d, yyyy')}
@@ -219,7 +242,7 @@ export default function CalendarScreen() {
           )}
 
           {/* Instructions */}
-          {!selectedDate && (
+          {!selectedDate && hasScheduledDoses && (
             <View style={styles.instructionsContainer}>
               <IconSymbol name="hand.tap" size={32} color={colors.textSecondary} />
               <Text style={styles.instructionsText}>
@@ -239,6 +262,41 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 8,
     marginBottom: 16,
+  },
+  emptyStateContainer: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 32,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  emptyStateTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  emptyStateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 24,
+    gap: 8,
+  },
+  emptyStateButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
   },
   legendContainer: {
     backgroundColor: colors.card,

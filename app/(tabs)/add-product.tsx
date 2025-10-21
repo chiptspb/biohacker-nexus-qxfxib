@@ -7,7 +7,7 @@ import { useApp } from '@/contexts/AppContext';
 import { Product, Inventory, Frequency, Route, Units, DayOfWeek, MedicationType, ScheduledDose } from '@/types';
 import Toast, { ToastType } from '@/components/Toast';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { addDays, addWeeks, addMonths, startOfDay, getDay, isBefore, isEqual, isAfter } from 'date-fns';
+import { addDays, addWeeks, addMonths, startOfDay, getDay, isBefore, isEqual, isAfter, subMonths } from 'date-fns';
 
 const FREQUENCIES: Frequency[] = ['Daily', 'Every Other Day', 'Weekly', 'Bi-Weekly', 'Monthly', 'As Needed'];
 const ROUTES: Route[] = ['SubQ', 'IM', 'Oral', 'Nasal', 'Topical', 'Vaginal'];
@@ -94,16 +94,21 @@ export default function AddProductScreen() {
   const calculateScheduledDoses = (productId: string, productName: string, doseAmount: number, routeType: Route): ScheduledDose[] => {
     const doses: ScheduledDose[] = [];
     const start = startOfDay(new Date(startingDate));
+    const today = startOfDay(new Date());
     
-    // Generate doses for the next 90 days
-    const endDate = addDays(start, 90);
+    // If start date is in the past, begin from today for future doses
+    const effectiveStart = isBefore(start, today) ? today : start;
+    
+    // Generate doses for the next 90 days from effective start
+    const endDate = addDays(effectiveStart, 90);
 
     console.log('Calculating doses:', {
       productName,
       frequency,
       daysOfWeek,
-      startDate: start.toISOString(),
-      startDay: getDay(start),
+      originalStartDate: start.toISOString(),
+      effectiveStartDate: effectiveStart.toISOString(),
+      startDay: getDay(effectiveStart),
       endDate: endDate.toISOString(),
     });
 
@@ -114,7 +119,7 @@ export default function AddProductScreen() {
 
     if (frequency === 'Daily') {
       // Daily: Add a dose every day
-      let currentDate = start;
+      let currentDate = effectiveStart;
       while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
         doses.push({
           id: `${productId}-${currentDate.toISOString()}`,
@@ -130,7 +135,7 @@ export default function AddProductScreen() {
       }
     } else if (frequency === 'Every Other Day') {
       // Every Other Day: Add a dose every 2 days
-      let currentDate = start;
+      let currentDate = effectiveStart;
       while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
         doses.push({
           id: `${productId}-${currentDate.toISOString()}`,
@@ -153,8 +158,8 @@ export default function AddProductScreen() {
         
         // For each selected day of the week
         selectedDayNumbers.forEach(targetDay => {
-          // Find the first occurrence of this day on or after the start date
-          const firstOccurrence = findNextDayOfWeek(start, targetDay);
+          // Find the first occurrence of this day on or after the effective start date
+          const firstOccurrence = findNextDayOfWeek(effectiveStart, targetDay);
           
           console.log(`First occurrence of day ${targetDay} (${Object.keys(DAY_MAP).find(k => DAY_MAP[k as DayOfWeek] === targetDay)}):`, firstOccurrence.toISOString(), 'Day:', getDay(firstOccurrence));
           
@@ -176,7 +181,7 @@ export default function AddProductScreen() {
         });
       } else {
         // Weekly without specific days: Use the same day of week as start date
-        let currentDate = start;
+        let currentDate = effectiveStart;
         while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
           doses.push({
             id: `${productId}-${currentDate.toISOString()}`,
@@ -197,7 +202,7 @@ export default function AddProductScreen() {
         const selectedDayNumbers = daysOfWeek.map(day => DAY_MAP[day]).sort((a, b) => a - b);
         
         selectedDayNumbers.forEach(targetDay => {
-          const firstOccurrence = findNextDayOfWeek(start, targetDay);
+          const firstOccurrence = findNextDayOfWeek(effectiveStart, targetDay);
           
           // Add doses every 2 weeks on this day
           let currentDate = firstOccurrence;
@@ -217,7 +222,7 @@ export default function AddProductScreen() {
         });
       } else {
         // Bi-weekly without specific days: Use the same day of week as start date
-        let currentDate = start;
+        let currentDate = effectiveStart;
         while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
           doses.push({
             id: `${productId}-${currentDate.toISOString()}`,
@@ -234,7 +239,7 @@ export default function AddProductScreen() {
       }
     } else if (frequency === 'Monthly') {
       // Monthly: Add a dose on the same day of each month
-      let currentDate = start;
+      let currentDate = effectiveStart;
       while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
         doses.push({
           id: `${productId}-${currentDate.toISOString()}`,
@@ -255,7 +260,7 @@ export default function AddProductScreen() {
 
     console.log(`Generated ${doses.length} doses. First 5:`, doses.slice(0, 5).map(d => ({
       date: d.scheduledDate,
-      day: getDay(new Date(d.scheduledDate))
+      day: getDay(new Date(d.scheduledDate + 'T00:00:00'))
     })));
 
     return doses;
@@ -273,11 +278,11 @@ export default function AddProductScreen() {
       return;
     }
 
-    // Validate starting date is not in the past (allow today)
-    const today = startOfDay(new Date());
+    // Validate starting date is not too far in the past (more than 6 months)
+    const sixMonthsAgo = subMonths(new Date(), 6);
     const selectedStart = startOfDay(startingDate);
-    if (isBefore(selectedStart, today)) {
-      showToast('Starting date cannot be in the past.', 'error');
+    if (isBefore(selectedStart, sixMonthsAgo)) {
+      showToast('Starting date cannot be more than 6 months in the past.', 'error');
       return;
     }
 
@@ -328,6 +333,7 @@ export default function AddProductScreen() {
 
       // Calculate and add scheduled doses
       const scheduledDoses = calculateScheduledDoses(productId, product.name, doseNum, route);
+      console.log(`Adding ${scheduledDoses.length} scheduled doses to context`);
       scheduledDoses.forEach(dose => addScheduledDose(dose));
 
       showToast('Medication added successfully!', 'success');
@@ -480,25 +486,31 @@ export default function AddProductScreen() {
 
           <View style={commonStyles.section}>
             <Text style={commonStyles.label}>Starting Date *</Text>
+            <Text style={styles.helperText}>
+              Select when you want to start this protocol. Tap to open calendar picker.
+            </Text>
             <Pressable 
-              style={commonStyles.input} 
+              style={[commonStyles.input, styles.datePickerButton]} 
               onPress={() => setShowDatePicker(true)}
               disabled={isSaving}
             >
-              <Text style={{ color: colors.text, fontSize: 16 }}>
+              <IconSymbol name="calendar" size={20} color={colors.primary} />
+              <Text style={styles.datePickerText}>
                 {startingDate.toLocaleDateString('en-US', { 
                   year: 'numeric', 
                   month: 'long', 
                   day: 'numeric' 
                 })}
               </Text>
+              <IconSymbol name="chevron.down" size={16} color={colors.textSecondary} />
             </Pressable>
             {showDatePicker && (
               <DateTimePicker
                 value={startingDate}
                 mode="date"
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                minimumDate={new Date()}
+                minimumDate={subMonths(new Date(), 6)}
+                maximumDate={addMonths(new Date(), 12)}
                 onChange={(event, selectedDate) => {
                   setShowDatePicker(Platform.OS === 'ios');
                   if (selectedDate) {
@@ -685,6 +697,16 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 12,
     lineHeight: 18,
+  },
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  datePickerText: {
+    flex: 1,
+    fontSize: 16,
+    color: colors.text,
   },
   daysGrid: {
     flexDirection: 'row',
