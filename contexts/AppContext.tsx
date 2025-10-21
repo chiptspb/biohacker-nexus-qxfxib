@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserProfile, Product, Inventory, DoseLog, ScheduledDose } from '@/types';
 
@@ -59,13 +59,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loadData();
   }, []);
 
-  // Save data to AsyncStorage whenever it changes
-  useEffect(() => {
-    if (!isLoading && user) {
-      saveData();
-    }
-  }, [user, products, inventory, doseLogs, scheduledDoses, hasSeenDisclaimer, hasCompletedOnboarding]);
-
   const loadData = async () => {
     try {
       const [
@@ -100,7 +93,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const saveData = async () => {
+  const saveData = useCallback(async () => {
     try {
       await Promise.all([
         AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user)),
@@ -114,7 +107,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Error saving data:', error);
     }
-  };
+  }, [user, products, inventory, doseLogs, scheduledDoses, hasSeenDisclaimer, hasCompletedOnboarding]);
+
+  // Save data to AsyncStorage whenever it changes
+  useEffect(() => {
+    if (!isLoading && user) {
+      saveData();
+    }
+  }, [isLoading, user, saveData]);
 
   const addProduct = (product: Product) => {
     setProducts([...products, product]);

@@ -8,6 +8,7 @@ import { Product, Inventory, Frequency, Route, Units, DayOfWeek, MedicationType,
 import Toast, { ToastType } from '@/components/Toast';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { addDays, addWeeks, addMonths, startOfDay, getDay, isBefore, isEqual, isAfter, subMonths } from 'date-fns';
+import { IconSymbol } from '@/components/IconSymbol';
 
 const FREQUENCIES: Frequency[] = ['Daily', 'Every Other Day', 'Weekly', 'Bi-Weekly', 'Monthly', 'As Needed'];
 const ROUTES: Route[] = ['SubQ', 'IM', 'Oral', 'Nasal', 'Topical', 'Vaginal'];

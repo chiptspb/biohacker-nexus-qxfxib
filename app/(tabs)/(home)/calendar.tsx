@@ -45,10 +45,12 @@ export default function CalendarScreen() {
   }, [products]);
 
   // Get color for a product
-  const getProductColor = (productId: string): string => {
-    const productColor = productColors.find(pc => pc.productId === productId);
-    return productColor?.color || colors.primary;
-  };
+  const getProductColor = useMemo(() => {
+    return (productId: string): string => {
+      const productColor = productColors.find(pc => pc.productId === productId);
+      return productColor?.color || colors.primary;
+    };
+  }, [productColors]);
 
   // Prepare marked dates for calendar
   const markedDates = useMemo(() => {
@@ -98,7 +100,7 @@ export default function CalendarScreen() {
     }
 
     return marked;
-  }, [scheduledDoses, productColors, selectedDate]);
+  }, [scheduledDoses, productColors, selectedDate, getProductColor]);
 
   // Get doses for selected date
   const dosesForSelectedDate = useMemo(() => {
