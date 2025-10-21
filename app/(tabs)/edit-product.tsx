@@ -7,10 +7,21 @@ import { useApp } from '@/contexts/AppContext';
 import { Frequency, Route, DayOfWeek, MedicationType, ScheduledDose } from '@/types';
 import Toast, { ToastType } from '@/components/Toast';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { addDays, addWeeks, addMonths, startOfDay, getDay, isBefore, isEqual, subMonths } from 'date-fns';
+import { addDays, addWeeks, addMonths, startOfDay, getDay, isBefore, isEqual, subMonths, addYears } from 'date-fns';
 import { IconSymbol } from '@/components/IconSymbol';
 
-const FREQUENCIES: Frequency[] = ['Daily', 'Every Other Day', 'Weekly', 'Bi-Weekly', 'Monthly', 'As Needed'];
+const FREQUENCIES: Frequency[] = [
+  'Daily',
+  'Every Other Day',
+  'Every 3 Days',
+  'Every 4 Days',
+  'Every 5 Days',
+  'Every 6 Days',
+  'Weekly',
+  'Bi-Weekly',
+  'Monthly'
+];
+
 const ROUTES: Route[] = ['SubQ', 'IM', 'Oral', 'Nasal', 'Topical', 'Vaginal'];
 const DAYS_OF_WEEK: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MEDICATION_TYPES: MedicationType[] = ['GLP-1', 'Other Peptide', 'Hormone'];
@@ -28,7 +39,7 @@ const DAY_MAP: Record<DayOfWeek, number> = {
 
 export default function EditProductScreen() {
   const { productId } = useLocalSearchParams<{ productId: string }>();
-  const { products, updateProduct, scheduledDoses, setScheduledDoses, addScheduledDose } = useApp();
+  const { products, updateProduct, scheduledDoses, setScheduledDoses } = useApp();
   
   const product = products.find(p => p.id === productId);
 
@@ -36,7 +47,7 @@ export default function EditProductScreen() {
   const [category, setCategory] = useState(product?.category || '');
   const [medicationType, setMedicationType] = useState<MedicationType>(product?.medicationType || 'Other Peptide');
   const [doseMg, setDoseMg] = useState(product?.doseMg.toString() || '');
-  const [frequency, setFrequency] = useState<Frequency>(product?.frequency || 'Daily');
+  const [frequency, setFrequency] = useState<Frequency>(product?.frequency || 'Weekly');
   const [route, setRoute] = useState<Route>(product?.route || 'SubQ');
   const [schedule, setSchedule] = useState(product?.schedule || '');
   const [daysOfWeek, setDaysOfWeek] = useState<DayOfWeek[]>(product?.daysOfWeek || []);
@@ -97,8 +108,8 @@ export default function EditProductScreen() {
     // If start date is in the past, begin from today for future doses
     const effectiveStart = isBefore(start, today) ? today : start;
     
-    // Generate doses for the next 90 days from effective start
-    const endDate = addDays(effectiveStart, 90);
+    // Generate doses for 1 year ahead (365 days)
+    const endDate = addYears(effectiveStart, 1);
 
     console.log('Calculating doses:', {
       productName,
@@ -110,30 +121,26 @@ export default function EditProductScreen() {
       endDate: endDate.toISOString(),
     });
 
-    if (frequency === 'As Needed') {
-      // No scheduled doses for "As Needed"
-      return doses;
-    }
-
-    if (frequency === 'Daily') {
-      // Daily: Add a dose every day
-      let currentDate = effectiveStart;
-      while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
-        doses.push({
-          id: `${prodId}-${currentDate.toISOString()}`,
-          productId: prodId,
-          productName,
-          doseMg: doseAmount,
-          route: routeType,
-          scheduledDate: currentDate.toISOString().split('T')[0],
-          scheduledTime: '09:00',
-          completed: false,
-        });
-        currentDate = addDays(currentDate, 1);
+    // Helper function to get interval days based on frequency
+    const getIntervalDays = (freq: Frequency): number => {
+      switch (freq) {
+        case 'Daily': return 1;
+        case 'Every Other Day': return 2;
+        case 'Every 3 Days': return 3;
+        case 'Every 4 Days': return 4;
+        case 'Every 5 Days': return 5;
+        case 'Every 6 Days': return 6;
+        default: return 1;
       }
-    } else if (frequency === 'Every Other Day') {
-      // Every Other Day: Add a dose every 2 days
+    };
+
+    if (frequency === 'Daily' || frequency === 'Every Other Day' || 
+        frequency === 'Every 3 Days' || frequency === 'Every 4 Days' || 
+        frequency === 'Every 5 Days' || frequency === 'Every 6 Days') {
+      // Fixed interval frequencies
+      const intervalDays = getIntervalDays(frequency);
       let currentDate = effectiveStart;
+      
       while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
         doses.push({
           id: `${prodId}-${currentDate.toISOString()}`,
@@ -145,7 +152,7 @@ export default function EditProductScreen() {
           scheduledTime: '09:00',
           completed: false,
         });
-        currentDate = addDays(currentDate, 2);
+        currentDate = addDays(currentDate, intervalDays);
       }
     } else if (frequency === 'Weekly') {
       if (daysOfWeek.length > 0) {
@@ -256,7 +263,7 @@ export default function EditProductScreen() {
     // Sort doses by date
     doses.sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
 
-    console.log(`Generated ${doses.length} doses. First 5:`, doses.slice(0, 5).map(d => ({
+    console.log(`Generated ${doses.length} doses for 1 year. First 5:`, doses.slice(0, 5).map(d => ({
       date: d.scheduledDate,
       day: getDay(new Date(d.scheduledDate + 'T00:00:00'))
     })));
@@ -490,7 +497,7 @@ export default function EditProductScreen() {
                 mode="date"
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                 minimumDate={subMonths(new Date(), 6)}
-                maximumDate={addMonths(new Date(), 12)}
+                maximumDate={addYears(new Date(), 2)}
                 onChange={(event, selectedDate) => {
                   setShowDatePicker(Platform.OS === 'ios');
                   if (selectedDate) {

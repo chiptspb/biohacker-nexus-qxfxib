@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { Calendar, DateData } from 'react-native-calendars';
@@ -45,11 +45,9 @@ export default function CalendarScreen() {
   }, [products]);
 
   // Get color for a product
-  const getProductColor = useMemo(() => {
-    return (productId: string): string => {
-      const productColor = productColors.find(pc => pc.productId === productId);
-      return productColor?.color || colors.primary;
-    };
+  const getProductColor = useCallback((productId: string): string => {
+    const productColor = productColors.find(pc => pc.productId === productId);
+    return productColor?.color || colors.primary;
   }, [productColors]);
 
   // Prepare marked dates for calendar
@@ -100,7 +98,7 @@ export default function CalendarScreen() {
     }
 
     return marked;
-  }, [scheduledDoses, productColors, selectedDate, getProductColor]);
+  }, [scheduledDoses, selectedDate, getProductColor]);
 
   // Get doses for selected date
   const dosesForSelectedDate = useMemo(() => {
