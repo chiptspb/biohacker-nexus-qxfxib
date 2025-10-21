@@ -1,11 +1,12 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert, Switch } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert, Switch, ActivityIndicator } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { colors, commonStyles, buttonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useApp } from '@/contexts/AppContext';
 import { Gender, Units } from '@/types';
+import Toast, { ToastType } from '@/components/Toast';
 
 const GENDERS: Gender[] = ['M', 'F', 'Other'];
 const UNITS: Units[] = ['mg', 'mcg', 'ml', 'IU'];
@@ -18,8 +19,27 @@ export default function SettingsScreen() {
   const [units, setUnits] = useState<Units>(user?.units || 'mg');
   const [darkMode, setDarkMode] = useState(true);
 
-  const handleSaveProfile = () => {
-    if (user) {
+  // UI state
+  const [isSaving, setIsSaving] = useState(false);
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<ToastType>('success');
+
+  const showToast = (message: string, type: ToastType) => {
+    setToastMessage(message);
+    setToastType(type);
+    setToastVisible(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!user) return;
+
+    setIsSaving(true);
+
+    try {
+      // Simulate Firebase save delay
+      await new Promise(resolve => setTimeout(resolve, 800));
+
       const ageNum = age ? parseInt(age) : undefined;
       setUser({
         ...user,
@@ -28,7 +48,17 @@ export default function SettingsScreen() {
         goals: goals.trim() || undefined,
         units,
       });
-      Alert.alert('Success', 'Profile updated successfully!');
+
+      showToast('Profile updated successfully!', 'success');
+      
+      // Navigate to dashboard after short delay to show toast
+      setTimeout(() => {
+        router.push('/(tabs)/(home)/dashboard');
+      }, 1000);
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      showToast('Failed to save profile. Please try again.', 'error');
+      setIsSaving(false);
     }
   };
 
@@ -76,6 +106,13 @@ export default function SettingsScreen() {
         }}
       />
       <View style={commonStyles.container}>
+        <Toast
+          visible={toastVisible}
+          message={toastMessage}
+          type={toastType}
+          onHide={() => setToastVisible(false)}
+        />
+
         <ScrollView style={commonStyles.content} contentContainerStyle={commonStyles.scrollContent}>
           {/* Premium Status */}
           <View style={[commonStyles.card, isPremium && styles.premiumCard]}>
@@ -123,6 +160,7 @@ export default function SettingsScreen() {
                 placeholder="Enter your age"
                 placeholderTextColor={colors.textSecondary}
                 keyboardType="number-pad"
+                editable={!isSaving}
               />
             </View>
 
@@ -137,6 +175,7 @@ export default function SettingsScreen() {
                       gender === g && styles.optionSelected,
                     ]}
                     onPress={() => setGender(g)}
+                    disabled={isSaving}
                   >
                     <Text
                       style={[
@@ -162,6 +201,7 @@ export default function SettingsScreen() {
                       units === u && styles.optionSelected,
                     ]}
                     onPress={() => setUnits(u)}
+                    disabled={isSaving}
                   >
                     <Text
                       style={[
@@ -186,11 +226,20 @@ export default function SettingsScreen() {
                 placeholderTextColor={colors.textSecondary}
                 multiline
                 numberOfLines={4}
+                editable={!isSaving}
               />
             </View>
 
-            <Pressable style={buttonStyles.primary} onPress={handleSaveProfile}>
-              <Text style={buttonStyles.buttonText}>Save Profile</Text>
+            <Pressable 
+              style={[buttonStyles.primary, isSaving && { opacity: 0.6 }]} 
+              onPress={handleSaveProfile}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <ActivityIndicator color={colors.text} />
+              ) : (
+                <Text style={buttonStyles.buttonText}>Save Profile</Text>
+              )}
             </Pressable>
           </View>
 

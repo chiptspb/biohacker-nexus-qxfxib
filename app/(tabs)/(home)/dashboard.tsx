@@ -5,7 +5,7 @@ import { Stack, router } from 'expo-router';
 import { colors, commonStyles, buttonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useApp } from '@/contexts/AppContext';
-import { DoseDue, LowStockAlert } from '@/types';
+import { DoseDue, LowStockAlert, DayOfWeek } from '@/types';
 import PremiumModal from '@/components/PremiumModal';
 
 export default function DashboardScreen() {
@@ -19,10 +19,18 @@ export default function DashboardScreen() {
     setTimeout(() => setRefreshing(false), 1000);
   };
 
+  // Helper function to get current day of week as DayOfWeek type
+  const getCurrentDayOfWeek = (): DayOfWeek => {
+    const days: DayOfWeek[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const today = new Date();
+    return days[today.getDay()];
+  };
+
   // Calculate doses due today
   const dosesDue = useMemo((): DoseDue[] => {
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
+    const currentDay = getCurrentDayOfWeek();
     
     return products.map(product => {
       // Check if dose was already logged today
@@ -32,6 +40,13 @@ export default function DashboardScreen() {
       });
 
       if (loggedToday) return null;
+
+      // Check if today is a scheduled day (if daysOfWeek is specified)
+      if (product.daysOfWeek && product.daysOfWeek.length > 0) {
+        if (!product.daysOfWeek.includes(currentDay)) {
+          return null; // Not scheduled for today
+        }
+      }
 
       // Determine if dose is due based on frequency
       let isDue = false;
@@ -45,7 +60,39 @@ export default function DashboardScreen() {
           isDue = today.getDate() % 2 === 0;
           break;
         case 'Weekly':
-          isDue = today.getDay() === 1; // Monday
+          // If daysOfWeek is specified, already checked above
+          // Otherwise, default to Monday
+          isDue = product.daysOfWeek ? true : today.getDay() === 1;
+          break;
+        case 'Bi-Weekly':
+          // Check if it's been 2 weeks since last dose
+          const lastLog = doseLogs
+            .filter(log => log.productId === product.id)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+          
+          if (!lastLog) {
+            isDue = true;
+          } else {
+            const daysSinceLastDose = Math.floor(
+              (today.getTime() - new Date(lastLog.date).getTime()) / (1000 * 60 * 60 * 24)
+            );
+            isDue = daysSinceLastDose >= 14;
+          }
+          break;
+        case 'Monthly':
+          // Check if it's been a month since last dose
+          const lastMonthlyLog = doseLogs
+            .filter(log => log.productId === product.id)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+          
+          if (!lastMonthlyLog) {
+            isDue = true;
+          } else {
+            const daysSinceLastMonthlyDose = Math.floor(
+              (today.getTime() - new Date(lastMonthlyLog.date).getTime()) / (1000 * 60 * 60 * 24)
+            );
+            isDue = daysSinceLastMonthlyDose >= 30;
+          }
           break;
         default:
           isDue = false;
@@ -80,7 +127,12 @@ export default function DashboardScreen() {
           dosesPerMonth = 15;
           break;
         case 'Weekly':
-          dosesPerMonth = 4;
+          // If specific days are selected, count them
+          if (product.daysOfWeek && product.daysOfWeek.length > 0) {
+            dosesPerMonth = product.daysOfWeek.length * 4; // Approximate 4 weeks per month
+          } else {
+            dosesPerMonth = 4;
+          }
           break;
         case 'Bi-Weekly':
           dosesPerMonth = 2;

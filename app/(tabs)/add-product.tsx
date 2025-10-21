@@ -1,14 +1,16 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, ActivityIndicator } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { colors, commonStyles, buttonStyles } from '@/styles/commonStyles';
 import { useApp } from '@/contexts/AppContext';
-import { Product, Inventory, Frequency, Route, Units } from '@/types';
+import { Product, Inventory, Frequency, Route, Units, DayOfWeek } from '@/types';
+import Toast, { ToastType } from '@/components/Toast';
 
 const FREQUENCIES: Frequency[] = ['Daily', 'Every Other Day', 'Weekly', 'Bi-Weekly', 'Monthly', 'As Needed'];
-const ROUTES: Route[] = ['SubQ', 'IM', 'Oral', 'Nasal', 'Topical', 'IV', 'Vaginal'];
+const ROUTES: Route[] = ['SubQ', 'IM', 'Oral', 'Nasal', 'Topical', 'Vaginal'];
 const UNITS: Units[] = ['mg', 'mcg', 'ml', 'IU'];
+const DAYS_OF_WEEK: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export default function AddProductScreen() {
   const { user, addProduct, updateInventory } = useApp();
@@ -18,6 +20,7 @@ export default function AddProductScreen() {
   const [frequency, setFrequency] = useState<Frequency>('Daily');
   const [route, setRoute] = useState<Route>('SubQ');
   const [schedule, setSchedule] = useState('');
+  const [daysOfWeek, setDaysOfWeek] = useState<DayOfWeek[]>([]);
   const [notes, setNotes] = useState('');
   
   // Inventory fields
@@ -26,57 +29,92 @@ export default function AddProductScreen() {
   const [lotNumber, setLotNumber] = useState('');
   const [storage, setStorage] = useState('');
 
-  const handleSubmit = () => {
+  // UI state
+  const [isSaving, setIsSaving] = useState(false);
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<ToastType>('success');
+
+  const showToast = (message: string, type: ToastType) => {
+    setToastMessage(message);
+    setToastType(type);
+    setToastVisible(true);
+  };
+
+  const toggleDayOfWeek = (day: DayOfWeek) => {
+    if (daysOfWeek.includes(day)) {
+      setDaysOfWeek(daysOfWeek.filter(d => d !== day));
+    } else {
+      setDaysOfWeek([...daysOfWeek, day]);
+    }
+  };
+
+  const handleSubmit = async () => {
     if (!name.trim() || !doseMg) {
-      Alert.alert('Missing Information', 'Please enter product name and dose amount.');
+      showToast('Please enter product name and dose amount.', 'error');
       return;
     }
 
     const doseNum = parseFloat(doseMg);
     if (isNaN(doseNum) || doseNum <= 0) {
-      Alert.alert('Invalid Dose', 'Please enter a valid dose amount.');
+      showToast('Please enter a valid dose amount.', 'error');
       return;
     }
 
-    const productId = Date.now().toString();
+    setIsSaving(true);
 
-    const product: Product = {
-      id: productId,
-      userId: user?.id || 'user-1',
-      name: name.trim(),
-      category: category.trim() || 'General',
-      doseMg: doseNum,
-      frequency,
-      route,
-      schedule: schedule.trim() || undefined,
-      notes: notes.trim() || undefined,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    try {
+      // Simulate Firebase save delay
+      await new Promise(resolve => setTimeout(resolve, 800));
 
-    addProduct(product);
+      const productId = Date.now().toString();
 
-    // Add initial inventory if quantity provided
-    if (quantity) {
-      const qtyNum = parseFloat(quantity);
-      if (!isNaN(qtyNum) && qtyNum > 0) {
-        const inventory: Inventory = {
-          id: Date.now().toString(),
-          productId,
-          userId: user?.id || 'user-1',
-          quantity: qtyNum,
-          unit,
-          lotNumber: lotNumber.trim() || undefined,
-          storage: storage.trim() || undefined,
-          lastUpdated: new Date(),
-        };
-        updateInventory(inventory);
+      const product: Product = {
+        id: productId,
+        userId: user?.id || 'user-1',
+        name: name.trim(),
+        category: category.trim() || 'General',
+        doseMg: doseNum,
+        frequency,
+        route,
+        schedule: schedule.trim() || undefined,
+        daysOfWeek: daysOfWeek.length > 0 ? daysOfWeek : undefined,
+        notes: notes.trim() || undefined,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      addProduct(product);
+
+      // Add initial inventory if quantity provided
+      if (quantity) {
+        const qtyNum = parseFloat(quantity);
+        if (!isNaN(qtyNum) && qtyNum > 0) {
+          const inventory: Inventory = {
+            id: Date.now().toString(),
+            productId,
+            userId: user?.id || 'user-1',
+            quantity: qtyNum,
+            unit,
+            lotNumber: lotNumber.trim() || undefined,
+            storage: storage.trim() || undefined,
+            lastUpdated: new Date(),
+          };
+          updateInventory(inventory);
+        }
       }
-    }
 
-    Alert.alert('Success', 'Product added successfully!', [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+      showToast('Medication added successfully!', 'success');
+      
+      // Navigate to dashboard after short delay to show toast
+      setTimeout(() => {
+        router.push('/(tabs)/(home)/dashboard');
+      }, 1000);
+    } catch (error) {
+      console.error('Error adding product:', error);
+      showToast('Failed to add medication. Please try again.', 'error');
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -88,6 +126,13 @@ export default function AddProductScreen() {
         }}
       />
       <View style={commonStyles.container}>
+        <Toast
+          visible={toastVisible}
+          message={toastMessage}
+          type={toastType}
+          onHide={() => setToastVisible(false)}
+        />
+
         <ScrollView style={commonStyles.content} contentContainerStyle={commonStyles.scrollContent}>
           {/* Product Information */}
           <Text style={[commonStyles.sectionTitle, { marginBottom: 16 }]}>Product Information</Text>
@@ -100,6 +145,7 @@ export default function AddProductScreen() {
               onChangeText={setName}
               placeholder="e.g., Semaglutide, BPC-157"
               placeholderTextColor={colors.textSecondary}
+              editable={!isSaving}
             />
           </View>
 
@@ -111,6 +157,7 @@ export default function AddProductScreen() {
               onChangeText={setCategory}
               placeholder="e.g., GLP-1, Peptide, TRT"
               placeholderTextColor={colors.textSecondary}
+              editable={!isSaving}
             />
           </View>
 
@@ -123,6 +170,7 @@ export default function AddProductScreen() {
               placeholder="e.g., 0.5, 250"
               placeholderTextColor={colors.textSecondary}
               keyboardType="decimal-pad"
+              editable={!isSaving}
             />
           </View>
 
@@ -137,6 +185,7 @@ export default function AddProductScreen() {
                     frequency === freq && styles.optionSelected,
                   ]}
                   onPress={() => setFrequency(freq)}
+                  disabled={isSaving}
                 >
                   <Text
                     style={[
@@ -162,6 +211,7 @@ export default function AddProductScreen() {
                     route === r && styles.optionSelected,
                   ]}
                   onPress={() => setRoute(r)}
+                  disabled={isSaving}
                 >
                   <Text
                     style={[
@@ -177,6 +227,35 @@ export default function AddProductScreen() {
           </View>
 
           <View style={commonStyles.section}>
+            <Text style={commonStyles.label}>Day(s) of Week (optional)</Text>
+            <Text style={styles.helperText}>
+              Select specific days for doses. Leave empty for all days.
+            </Text>
+            <View style={styles.daysGrid}>
+              {DAYS_OF_WEEK.map(day => (
+                <Pressable
+                  key={day}
+                  style={[
+                    styles.dayOption,
+                    daysOfWeek.includes(day) && styles.dayOptionSelected,
+                  ]}
+                  onPress={() => toggleDayOfWeek(day)}
+                  disabled={isSaving}
+                >
+                  <Text
+                    style={[
+                      styles.dayOptionText,
+                      daysOfWeek.includes(day) && styles.dayOptionTextSelected,
+                    ]}
+                  >
+                    {day}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          <View style={commonStyles.section}>
             <Text style={commonStyles.label}>Schedule (optional)</Text>
             <TextInput
               style={commonStyles.input}
@@ -184,6 +263,7 @@ export default function AddProductScreen() {
               onChangeText={setSchedule}
               placeholder="e.g., Morning with breakfast"
               placeholderTextColor={colors.textSecondary}
+              editable={!isSaving}
             />
           </View>
 
@@ -197,6 +277,7 @@ export default function AddProductScreen() {
               placeholderTextColor={colors.textSecondary}
               multiline
               numberOfLines={4}
+              editable={!isSaving}
             />
           </View>
 
@@ -214,6 +295,7 @@ export default function AddProductScreen() {
                 placeholder="e.g., 1000"
                 placeholderTextColor={colors.textSecondary}
                 keyboardType="decimal-pad"
+                editable={!isSaving}
               />
               <View style={styles.unitPicker}>
                 {UNITS.map(u => (
@@ -224,6 +306,7 @@ export default function AddProductScreen() {
                       unit === u && styles.unitOptionSelected,
                     ]}
                     onPress={() => setUnit(u)}
+                    disabled={isSaving}
                   >
                     <Text
                       style={[
@@ -247,6 +330,7 @@ export default function AddProductScreen() {
               onChangeText={setLotNumber}
               placeholder="e.g., LOT12345"
               placeholderTextColor={colors.textSecondary}
+              editable={!isSaving}
             />
           </View>
 
@@ -258,15 +342,28 @@ export default function AddProductScreen() {
               onChangeText={setStorage}
               placeholder="e.g., Refrigerate 2-8°C"
               placeholderTextColor={colors.textSecondary}
+              editable={!isSaving}
             />
           </View>
 
           {/* Submit Buttons */}
-          <Pressable style={buttonStyles.primary} onPress={handleSubmit}>
-            <Text style={buttonStyles.buttonText}>Add Product</Text>
+          <Pressable 
+            style={[buttonStyles.primary, isSaving && { opacity: 0.6 }]} 
+            onPress={handleSubmit}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator color={colors.text} />
+            ) : (
+              <Text style={buttonStyles.buttonText}>Add Product</Text>
+            )}
           </Pressable>
 
-          <Pressable style={[buttonStyles.outline, { marginTop: 12 }]} onPress={() => router.back()}>
+          <Pressable 
+            style={[buttonStyles.outline, { marginTop: 12 }]} 
+            onPress={() => router.back()}
+            disabled={isSaving}
+          >
             <Text style={buttonStyles.buttonTextOutline}>Cancel</Text>
           </Pressable>
         </ScrollView>
@@ -299,6 +396,39 @@ const styles = StyleSheet.create({
   },
   optionTextSelected: {
     fontWeight: '600',
+  },
+  helperText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  daysGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  dayOption: {
+    backgroundColor: colors.card,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.border,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  dayOptionSelected: {
+    backgroundColor: colors.success,
+    borderColor: colors.success,
+  },
+  dayOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  dayOptionTextSelected: {
+    color: colors.text,
   },
   unitPicker: {
     flexDirection: 'row',

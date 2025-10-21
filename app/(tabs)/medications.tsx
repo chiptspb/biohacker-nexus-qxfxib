@@ -1,15 +1,30 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Modal, ActivityIndicator } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { colors, commonStyles, buttonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useApp } from '@/contexts/AppContext';
 import PremiumModal from '@/components/PremiumModal';
+import Toast, { ToastType } from '@/components/Toast';
 
 export default function MedicationsScreen() {
   const { products, doseLogs, canAddProduct, isPremium, deleteProduct } = useApp();
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Toast state
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<ToastType>('success');
+
+  const showToast = (message: string, type: ToastType) => {
+    setToastMessage(message);
+    setToastType(type);
+    setToastVisible(true);
+  };
 
   const handleAddProduct = () => {
     if (!canAddProduct()) {
@@ -27,21 +42,29 @@ export default function MedicationsScreen() {
   };
 
   const handleDeleteProduct = (productId: string, productName: string) => {
-    Alert.alert(
-      'Delete Product',
-      `Are you sure you want to delete "${productName}"? This will also delete all associated logs and inventory.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            deleteProduct(productId);
-            Alert.alert('Deleted', 'Product deleted successfully.');
-          },
-        },
-      ]
-    );
+    setProductToDelete({ id: productId, name: productName });
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!productToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      // Simulate Firebase deletion delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      deleteProduct(productToDelete.id);
+      setShowDeleteModal(false);
+      setProductToDelete(null);
+      
+      showToast('Medication deleted.', 'error');
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      showToast('Deletion failed—try again.', 'error');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const getProductStats = (productId: string) => {
@@ -74,6 +97,13 @@ export default function MedicationsScreen() {
         }}
       />
       <View style={commonStyles.container}>
+        <Toast
+          visible={toastVisible}
+          message={toastMessage}
+          type={toastType}
+          onHide={() => setToastVisible(false)}
+        />
+
         <ScrollView style={commonStyles.content} contentContainerStyle={commonStyles.scrollContent}>
           {/* Disclaimer */}
           <View style={styles.disclaimerBanner}>
@@ -119,6 +149,11 @@ export default function MedicationsScreen() {
                         <Text style={commonStyles.cardSubtitle}>
                           {product.doseMg}mg • {product.route} • {product.frequency}
                         </Text>
+                        {product.daysOfWeek && product.daysOfWeek.length > 0 && (
+                          <Text style={commonStyles.cardSubtitle}>
+                            Days: {product.daysOfWeek.join(', ')}
+                          </Text>
+                        )}
                       </View>
                       <Pressable
                         style={styles.deleteButton}
@@ -153,6 +188,47 @@ export default function MedicationsScreen() {
             </View>
           )}
         </ScrollView>
+
+        {/* Delete Confirmation Modal */}
+        <Modal
+          visible={showDeleteModal}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={() => !isDeleting && setShowDeleteModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <View style={styles.modalHeader}>
+                <IconSymbol name="exclamationmark.triangle.fill" size={48} color={colors.alert} />
+                <Text style={styles.modalTitle}>Delete this medication?</Text>
+                <Text style={styles.modalMessage}>
+                  This removes all logs and inventory for "{productToDelete?.name}". This action cannot be undone.
+                </Text>
+              </View>
+
+              <View style={styles.modalButtons}>
+                <Pressable
+                  style={[buttonStyles.outline, { flex: 1 }]}
+                  onPress={() => setShowDeleteModal(false)}
+                  disabled={isDeleting}
+                >
+                  <Text style={buttonStyles.buttonTextOutline}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={[buttonStyles.alert, { flex: 1 }]}
+                  onPress={confirmDelete}
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? (
+                    <ActivityIndicator color={colors.text} />
+                  ) : (
+                    <Text style={buttonStyles.buttonText}>Delete</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         <PremiumModal
           visible={showPremiumModal}
@@ -246,5 +322,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text,
     lineHeight: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContainer: {
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginTop: 8,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
   },
 });

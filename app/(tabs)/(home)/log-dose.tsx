@@ -7,7 +7,7 @@ import { useApp } from '@/contexts/AppContext';
 import { DoseLog, Route } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-const ROUTES: Route[] = ['SubQ', 'IM', 'Oral', 'Nasal', 'Topical', 'IV', 'Vaginal'];
+const ROUTES: Route[] = ['SubQ', 'IM', 'Oral', 'Nasal', 'Topical', 'Vaginal'];
 
 export default function LogDoseScreen() {
   const { products, inventory, addDoseLog, updateInventory } = useApp();

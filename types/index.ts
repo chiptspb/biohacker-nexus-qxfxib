@@ -1,8 +1,9 @@
 
 export type Gender = 'M' | 'F' | 'Other';
 export type Units = 'mg' | 'mcg' | 'ml' | 'IU';
-export type Route = 'SubQ' | 'IM' | 'Oral' | 'Nasal' | 'Topical' | 'IV' | 'Vaginal';
+export type Route = 'SubQ' | 'IM' | 'Oral' | 'Nasal' | 'Topical' | 'Vaginal';
 export type Frequency = 'Daily' | 'Every Other Day' | 'Weekly' | 'Bi-Weekly' | 'Monthly' | 'As Needed';
+export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun';
 
 export interface UserProfile {
   id: string;
@@ -24,6 +25,7 @@ export interface Product {
   frequency: Frequency;
   route: Route;
   schedule?: string;
+  daysOfWeek?: DayOfWeek[];
   notes?: string;
   createdAt: Date;
   updatedAt: Date;

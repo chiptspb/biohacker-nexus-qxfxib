@@ -1,10 +1,11 @@
 
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, ActivityIndicator } from 'react-native';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { colors, commonStyles, buttonStyles } from '@/styles/commonStyles';
 import { useApp } from '@/contexts/AppContext';
 import { Inventory, Units } from '@/types';
+import Toast, { ToastType } from '@/components/Toast';
 
 const UNITS: Units[] = ['mg', 'mcg', 'ml', 'IU'];
 
@@ -20,6 +21,18 @@ export default function EditInventoryScreen() {
   const [lotNumber, setLotNumber] = useState(existingInv?.lotNumber || '');
   const [storage, setStorage] = useState(existingInv?.storage || '');
 
+  // UI state
+  const [isSaving, setIsSaving] = useState(false);
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<ToastType>('success');
+
+  const showToast = (message: string, type: ToastType) => {
+    setToastMessage(message);
+    setToastType(type);
+    setToastVisible(true);
+  };
+
   if (!product) {
     return (
       <View style={commonStyles.centerContent}>
@@ -28,34 +41,48 @@ export default function EditInventoryScreen() {
     );
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!quantity) {
-      Alert.alert('Missing Information', 'Please enter the quantity.');
+      showToast('Please enter the quantity.', 'error');
       return;
     }
 
     const qtyNum = parseFloat(quantity);
     if (isNaN(qtyNum) || qtyNum < 0) {
-      Alert.alert('Invalid Quantity', 'Please enter a valid quantity.');
+      showToast('Please enter a valid quantity.', 'error');
       return;
     }
 
-    const inv: Inventory = {
-      id: existingInv?.id || Date.now().toString(),
-      productId,
-      userId: product.userId,
-      quantity: qtyNum,
-      unit,
-      lotNumber: lotNumber.trim() || undefined,
-      storage: storage.trim() || undefined,
-      lastUpdated: new Date(),
-    };
+    setIsSaving(true);
 
-    updateInventory(inv);
+    try {
+      // Simulate Firebase save delay
+      await new Promise(resolve => setTimeout(resolve, 800));
 
-    Alert.alert('Success', 'Inventory updated successfully!', [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+      const inv: Inventory = {
+        id: existingInv?.id || Date.now().toString(),
+        productId,
+        userId: product.userId,
+        quantity: qtyNum,
+        unit,
+        lotNumber: lotNumber.trim() || undefined,
+        storage: storage.trim() || undefined,
+        lastUpdated: new Date(),
+      };
+
+      updateInventory(inv);
+
+      showToast('Inventory updated successfully!', 'success');
+      
+      // Navigate to dashboard after short delay to show toast
+      setTimeout(() => {
+        router.push('/(tabs)/(home)/dashboard');
+      }, 1000);
+    } catch (error) {
+      console.error('Error updating inventory:', error);
+      showToast('Failed to update inventory. Please try again.', 'error');
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -67,6 +94,13 @@ export default function EditInventoryScreen() {
         }}
       />
       <View style={commonStyles.container}>
+        <Toast
+          visible={toastVisible}
+          message={toastMessage}
+          type={toastType}
+          onHide={() => setToastVisible(false)}
+        />
+
         <ScrollView style={commonStyles.content} contentContainerStyle={commonStyles.scrollContent}>
           <View style={styles.productHeader}>
             <Text style={commonStyles.title}>{product.name}</Text>
@@ -85,6 +119,7 @@ export default function EditInventoryScreen() {
                 placeholder="e.g., 1000"
                 placeholderTextColor={colors.textSecondary}
                 keyboardType="decimal-pad"
+                editable={!isSaving}
               />
               <View style={styles.unitPicker}>
                 {UNITS.map(u => (
@@ -95,6 +130,7 @@ export default function EditInventoryScreen() {
                       unit === u && styles.unitOptionSelected,
                     ]}
                     onPress={() => setUnit(u)}
+                    disabled={isSaving}
                   >
                     <Text
                       style={[
@@ -118,6 +154,7 @@ export default function EditInventoryScreen() {
               onChangeText={setLotNumber}
               placeholder="e.g., LOT12345"
               placeholderTextColor={colors.textSecondary}
+              editable={!isSaving}
             />
           </View>
 
@@ -131,14 +168,27 @@ export default function EditInventoryScreen() {
               placeholderTextColor={colors.textSecondary}
               multiline
               numberOfLines={3}
+              editable={!isSaving}
             />
           </View>
 
-          <Pressable style={buttonStyles.primary} onPress={handleSave}>
-            <Text style={buttonStyles.buttonText}>Save Changes</Text>
+          <Pressable 
+            style={[buttonStyles.primary, isSaving && { opacity: 0.6 }]} 
+            onPress={handleSave}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator color={colors.text} />
+            ) : (
+              <Text style={buttonStyles.buttonText}>Save Changes</Text>
+            )}
           </Pressable>
 
-          <Pressable style={[buttonStyles.outline, { marginTop: 12 }]} onPress={() => router.back()}>
+          <Pressable 
+            style={[buttonStyles.outline, { marginTop: 12 }]} 
+            onPress={() => router.back()}
+            disabled={isSaving}
+          >
             <Text style={buttonStyles.buttonTextOutline}>Cancel</Text>
           </Pressable>
         </ScrollView>
