@@ -504,6 +504,8 @@ export default function EditProductScreen() {
                     setStartingDate(selectedDate);
                   }
                 }}
+                textColor={colors.text}
+                themeVariant="light"
               />
             )}
           </View>

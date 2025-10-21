@@ -525,6 +525,8 @@ export default function AddProductScreen() {
                     setStartingDate(selectedDate);
                   }
                 }}
+                textColor={colors.text}
+                themeVariant="light"
               />
             )}
           </View>

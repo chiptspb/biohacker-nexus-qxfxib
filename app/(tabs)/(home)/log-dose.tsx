@@ -7,11 +7,12 @@ import { useApp } from '@/contexts/AppContext';
 import { DoseLog, Route } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { IconSymbol } from '@/components/IconSymbol';
+import { startOfDay, addHours, parseISO, isBefore, isAfter, differenceInHours } from 'date-fns';
 
 const ROUTES: Route[] = ['SubQ', 'IM', 'Oral', 'Nasal', 'Topical', 'Vaginal'];
 
 export default function LogDoseScreen() {
-  const { products, inventory, addDoseLog, updateInventory } = useApp();
+  const { products, inventory, addDoseLog, updateInventory, scheduledDoses, setScheduledDoses } = useApp();
   const [selectedProductId, setSelectedProductId] = useState(products[0]?.id || '');
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -40,6 +41,60 @@ export default function LogDoseScreen() {
       return;
     }
 
+    // Check if there's a scheduled dose within the next 24 hours for this product
+    const now = new Date();
+    const next24Hours = addHours(now, 24);
+    
+    const upcomingDoses = scheduledDoses.filter(dose => {
+      if (dose.productId !== selectedProductId || dose.completed) {
+        return false;
+      }
+      
+      const doseDateTime = parseISO(`${dose.scheduledDate}T${dose.scheduledTime}:00`);
+      return isAfter(doseDateTime, now) && isBefore(doseDateTime, next24Hours);
+    });
+
+    // Sort by date to get the next scheduled dose
+    upcomingDoses.sort((a, b) => {
+      const dateA = parseISO(`${a.scheduledDate}T${a.scheduledTime}:00`);
+      const dateB = parseISO(`${b.scheduledDate}T${b.scheduledTime}:00`);
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    const nextScheduledDose = upcomingDoses[0];
+
+    if (nextScheduledDose) {
+      // There's a scheduled dose within 24 hours - prompt the user
+      const doseDateTime = parseISO(`${nextScheduledDose.scheduledDate}T${nextScheduledDose.scheduledTime}:00`);
+      const hoursUntil = differenceInHours(doseDateTime, now);
+      
+      Alert.alert(
+        'Scheduled Dose Detected',
+        `You have a dose of ${selectedProduct?.name} scheduled in ${hoursUntil} hour${hoursUntil !== 1 ? 's' : ''}.\n\nDoes this dose replace the scheduled dose, or is it an additional dose?`,
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Additional Dose',
+            onPress: () => checkInventoryAndSave(amountNum, null),
+          },
+          {
+            text: 'Replace Scheduled',
+            onPress: () => checkInventoryAndSave(amountNum, nextScheduledDose.id),
+            style: 'default',
+          },
+        ],
+        { cancelable: true }
+      );
+    } else {
+      // No scheduled dose within 24 hours - proceed normally
+      checkInventoryAndSave(amountNum, null);
+    }
+  };
+
+  const checkInventoryAndSave = (amountNum: number, scheduledDoseIdToReplace: string | null) => {
     // Check inventory
     const inv = inventory.find(i => i.productId === selectedProductId);
     if (inv && inv.quantity < amountNum) {
@@ -48,16 +103,16 @@ export default function LogDoseScreen() {
         `Current stock: ${inv.quantity}mg. You're logging ${amountNum}mg. Continue anyway?`,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Continue', onPress: () => saveDoseLog(amountNum, inv) },
+          { text: 'Continue', onPress: () => saveDoseLog(amountNum, inv, scheduledDoseIdToReplace) },
         ]
       );
       return;
     }
 
-    saveDoseLog(amountNum, inv);
+    saveDoseLog(amountNum, inv, scheduledDoseIdToReplace);
   };
 
-  const saveDoseLog = async (amountNum: number, inv: any) => {
+  const saveDoseLog = async (amountNum: number, inv: any, scheduledDoseIdToReplace: string | null) => {
     setIsSaving(true);
 
     try {
@@ -86,6 +141,17 @@ export default function LogDoseScreen() {
           quantity: inv.quantity - amountNum,
           lastUpdated: new Date(),
         });
+      }
+
+      // If replacing a scheduled dose, mark it as completed
+      if (scheduledDoseIdToReplace) {
+        console.log('Marking scheduled dose as completed:', scheduledDoseIdToReplace);
+        const updatedDoses = scheduledDoses.map(dose => 
+          dose.id === scheduledDoseIdToReplace 
+            ? { ...dose, completed: true }
+            : dose
+        );
+        setScheduledDoses(updatedDoses);
       }
 
       setIsSaving(false);
@@ -175,6 +241,8 @@ export default function LogDoseScreen() {
                   setShowDatePicker(Platform.OS === 'ios');
                   if (selectedDate) setDate(selectedDate);
                 }}
+                textColor={colors.text}
+                themeVariant="light"
               />
             )}
           </View>
@@ -203,6 +271,8 @@ export default function LogDoseScreen() {
                   setShowTimePicker(Platform.OS === 'ios');
                   if (selectedTime) setTime(selectedTime);
                 }}
+                textColor={colors.text}
+                themeVariant="light"
               />
             )}
           </View>
