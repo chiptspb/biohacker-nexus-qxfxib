@@ -7,7 +7,7 @@ import { useApp } from '@/contexts/AppContext';
 import { Product, Inventory, Frequency, Route, Units, DayOfWeek, MedicationType, ScheduledDose } from '@/types';
 import Toast, { ToastType } from '@/components/Toast';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { addDays, addWeeks, addMonths, startOfDay, getDay, isBefore, isEqual } from 'date-fns';
+import { addDays, addWeeks, addMonths, startOfDay, getDay, isBefore, isEqual, isAfter } from 'date-fns';
 
 const FREQUENCIES: Frequency[] = ['Daily', 'Every Other Day', 'Weekly', 'Bi-Weekly', 'Monthly', 'As Needed'];
 const ROUTES: Route[] = ['SubQ', 'IM', 'Oral', 'Nasal', 'Topical', 'Vaginal'];
@@ -70,14 +70,21 @@ export default function AddProductScreen() {
    * Find the next occurrence of a specific day of the week from a given date
    * @param fromDate - The date to start searching from
    * @param targetDay - The target day of the week (0 = Sunday, 6 = Saturday)
-   * @returns The next occurrence of the target day
+   * @returns The next occurrence of the target day (could be the same day if it matches)
    */
   const findNextDayOfWeek = (fromDate: Date, targetDay: number): Date => {
     const currentDay = getDay(fromDate);
+    
+    // If the starting date is already the target day, use it
+    if (currentDay === targetDay) {
+      return fromDate;
+    }
+    
+    // Calculate days to add to reach the target day
     let daysToAdd = targetDay - currentDay;
     
-    // If the target day is today or in the past this week, move to next week
-    if (daysToAdd <= 0) {
+    // If target day is earlier in the week, add 7 to get next week's occurrence
+    if (daysToAdd < 0) {
       daysToAdd += 7;
     }
     
@@ -96,6 +103,7 @@ export default function AddProductScreen() {
       frequency,
       daysOfWeek,
       startDate: start.toISOString(),
+      startDay: getDay(start),
       endDate: endDate.toISOString(),
     });
 
@@ -146,20 +154,12 @@ export default function AddProductScreen() {
         // For each selected day of the week
         selectedDayNumbers.forEach(targetDay => {
           // Find the first occurrence of this day on or after the start date
-          let currentDate = start;
-          const startDay = getDay(start);
+          const firstOccurrence = findNextDayOfWeek(start, targetDay);
           
-          if (startDay === targetDay) {
-            // If start date is already the target day, use it
-            currentDate = start;
-          } else {
-            // Find next occurrence of target day
-            currentDate = findNextDayOfWeek(start, targetDay);
-          }
-          
-          console.log(`First occurrence of day ${targetDay}:`, currentDate.toISOString());
+          console.log(`First occurrence of day ${targetDay} (${Object.keys(DAY_MAP).find(k => DAY_MAP[k as DayOfWeek] === targetDay)}):`, firstOccurrence.toISOString(), 'Day:', getDay(firstOccurrence));
           
           // Add doses every week on this day
+          let currentDate = firstOccurrence;
           while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
             doses.push({
               id: `${productId}-${currentDate.toISOString()}`,
@@ -197,16 +197,10 @@ export default function AddProductScreen() {
         const selectedDayNumbers = daysOfWeek.map(day => DAY_MAP[day]).sort((a, b) => a - b);
         
         selectedDayNumbers.forEach(targetDay => {
-          let currentDate = start;
-          const startDay = getDay(start);
-          
-          if (startDay === targetDay) {
-            currentDate = start;
-          } else {
-            currentDate = findNextDayOfWeek(start, targetDay);
-          }
+          const firstOccurrence = findNextDayOfWeek(start, targetDay);
           
           // Add doses every 2 weeks on this day
+          let currentDate = firstOccurrence;
           while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
             doses.push({
               id: `${productId}-${currentDate.toISOString()}`,
@@ -259,7 +253,10 @@ export default function AddProductScreen() {
     // Sort doses by date
     doses.sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
 
-    console.log(`Generated ${doses.length} doses. First 5:`, doses.slice(0, 5).map(d => d.scheduledDate));
+    console.log(`Generated ${doses.length} doses. First 5:`, doses.slice(0, 5).map(d => ({
+      date: d.scheduledDate,
+      day: getDay(new Date(d.scheduledDate))
+    })));
 
     return doses;
   };
@@ -273,6 +270,14 @@ export default function AddProductScreen() {
     const doseNum = parseFloat(doseMg);
     if (isNaN(doseNum) || doseNum <= 0) {
       showToast('Please enter a valid dose amount.', 'error');
+      return;
+    }
+
+    // Validate starting date is not in the past (allow today)
+    const today = startOfDay(new Date());
+    const selectedStart = startOfDay(startingDate);
+    if (isBefore(selectedStart, today)) {
+      showToast('Starting date cannot be in the past.', 'error');
       return;
     }
 
@@ -481,7 +486,11 @@ export default function AddProductScreen() {
               disabled={isSaving}
             >
               <Text style={{ color: colors.text, fontSize: 16 }}>
-                {startingDate.toLocaleDateString()}
+                {startingDate.toLocaleDateString('en-US', { 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}
               </Text>
             </Pressable>
             {showDatePicker && (
@@ -489,6 +498,7 @@ export default function AddProductScreen() {
                 value={startingDate}
                 mode="date"
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                minimumDate={new Date()}
                 onChange={(event, selectedDate) => {
                   setShowDatePicker(Platform.OS === 'ios');
                   if (selectedDate) {
@@ -502,7 +512,7 @@ export default function AddProductScreen() {
           <View style={commonStyles.section}>
             <Text style={commonStyles.label}>Day(s) of Week (optional)</Text>
             <Text style={styles.helperText}>
-              Select specific days for doses. Leave empty for all days.
+              Select specific days for doses. Leave empty to use starting date&apos;s day of week.
             </Text>
             <View style={styles.daysGrid}>
               {DAYS_OF_WEEK.map(day => (
