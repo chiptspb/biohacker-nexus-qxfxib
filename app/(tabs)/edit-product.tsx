@@ -7,11 +7,23 @@ import { useApp } from '@/contexts/AppContext';
 import { Frequency, Route, DayOfWeek, MedicationType, ScheduledDose } from '@/types';
 import Toast, { ToastType } from '@/components/Toast';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { addDays, addWeeks, addMonths, startOfDay, getDay, isBefore, isEqual } from 'date-fns';
 
 const FREQUENCIES: Frequency[] = ['Daily', 'Every Other Day', 'Weekly', 'Bi-Weekly', 'Monthly', 'As Needed'];
 const ROUTES: Route[] = ['SubQ', 'IM', 'Oral', 'Nasal', 'Topical', 'Vaginal'];
 const DAYS_OF_WEEK: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MEDICATION_TYPES: MedicationType[] = ['GLP-1', 'Other Peptide', 'Hormone'];
+
+// Map DayOfWeek to JavaScript day numbers (0 = Sunday, 6 = Saturday)
+const DAY_MAP: Record<DayOfWeek, number> = {
+  'Sun': 0,
+  'Mon': 1,
+  'Tue': 2,
+  'Wed': 3,
+  'Thu': 4,
+  'Fri': 5,
+  'Sat': 6,
+};
 
 export default function EditProductScreen() {
   const { productId } = useLocalSearchParams<{ productId: string }>();
@@ -51,52 +63,48 @@ export default function EditProductScreen() {
     }
   };
 
+  /**
+   * Find the next occurrence of a specific day of the week from a given date
+   * @param fromDate - The date to start searching from
+   * @param targetDay - The target day of the week (0 = Sunday, 6 = Saturday)
+   * @returns The next occurrence of the target day
+   */
+  const findNextDayOfWeek = (fromDate: Date, targetDay: number): Date => {
+    const currentDay = getDay(fromDate);
+    let daysToAdd = targetDay - currentDay;
+    
+    // If the target day is today or in the past this week, move to next week
+    if (daysToAdd <= 0) {
+      daysToAdd += 7;
+    }
+    
+    return addDays(fromDate, daysToAdd);
+  };
+
   const calculateScheduledDoses = (prodId: string, productName: string, doseAmount: number, routeType: Route): ScheduledDose[] => {
     const doses: ScheduledDose[] = [];
-    const start = new Date(startingDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const start = startOfDay(new Date(startingDate));
     
     // Generate doses for the next 90 days
-    const endDate = new Date(start);
-    endDate.setDate(endDate.getDate() + 90);
+    const endDate = addDays(start, 90);
 
-    let currentDate = new Date(start);
-    
-    while (currentDate <= endDate) {
-      let shouldAddDose = false;
+    console.log('Calculating doses:', {
+      productName,
+      frequency,
+      daysOfWeek,
+      startDate: start.toISOString(),
+      endDate: endDate.toISOString(),
+    });
 
-      switch (frequency) {
-        case 'Daily':
-          shouldAddDose = true;
-          break;
-        case 'Every Other Day':
-          const daysDiff = Math.floor((currentDate.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-          shouldAddDose = daysDiff % 2 === 0;
-          break;
-        case 'Weekly':
-          if (daysOfWeek.length > 0) {
-            const dayNames: DayOfWeek[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-            const currentDay = dayNames[currentDate.getDay()];
-            shouldAddDose = daysOfWeek.includes(currentDay);
-          } else {
-            const weeksDiff = Math.floor((currentDate.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 7));
-            shouldAddDose = currentDate.getDay() === start.getDay() && weeksDiff >= 0;
-          }
-          break;
-        case 'Bi-Weekly':
-          const biWeeksDiff = Math.floor((currentDate.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-          shouldAddDose = biWeeksDiff % 14 === 0;
-          break;
-        case 'Monthly':
-          shouldAddDose = currentDate.getDate() === start.getDate();
-          break;
-        case 'As Needed':
-          shouldAddDose = false;
-          break;
-      }
+    if (frequency === 'As Needed') {
+      // No scheduled doses for "As Needed"
+      return doses;
+    }
 
-      if (shouldAddDose) {
+    if (frequency === 'Daily') {
+      // Daily: Add a dose every day
+      let currentDate = start;
+      while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
         doses.push({
           id: `${prodId}-${currentDate.toISOString()}`,
           productId: prodId,
@@ -107,10 +115,148 @@ export default function EditProductScreen() {
           scheduledTime: '09:00',
           completed: false,
         });
+        currentDate = addDays(currentDate, 1);
       }
-
-      currentDate.setDate(currentDate.getDate() + 1);
+    } else if (frequency === 'Every Other Day') {
+      // Every Other Day: Add a dose every 2 days
+      let currentDate = start;
+      while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
+        doses.push({
+          id: `${prodId}-${currentDate.toISOString()}`,
+          productId: prodId,
+          productName,
+          doseMg: doseAmount,
+          route: routeType,
+          scheduledDate: currentDate.toISOString().split('T')[0],
+          scheduledTime: '09:00',
+          completed: false,
+        });
+        currentDate = addDays(currentDate, 2);
+      }
+    } else if (frequency === 'Weekly') {
+      if (daysOfWeek.length > 0) {
+        // Weekly with specific days: Find next occurrence of each selected day, then recur weekly
+        const selectedDayNumbers = daysOfWeek.map(day => DAY_MAP[day]).sort((a, b) => a - b);
+        
+        console.log('Selected days:', daysOfWeek, 'Day numbers:', selectedDayNumbers);
+        
+        // For each selected day of the week
+        selectedDayNumbers.forEach(targetDay => {
+          // Find the first occurrence of this day on or after the start date
+          let currentDate = start;
+          const startDay = getDay(start);
+          
+          if (startDay === targetDay) {
+            // If start date is already the target day, use it
+            currentDate = start;
+          } else {
+            // Find next occurrence of target day
+            currentDate = findNextDayOfWeek(start, targetDay);
+          }
+          
+          console.log(`First occurrence of day ${targetDay}:`, currentDate.toISOString());
+          
+          // Add doses every week on this day
+          while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
+            doses.push({
+              id: `${prodId}-${currentDate.toISOString()}`,
+              productId: prodId,
+              productName,
+              doseMg: doseAmount,
+              route: routeType,
+              scheduledDate: currentDate.toISOString().split('T')[0],
+              scheduledTime: '09:00',
+              completed: false,
+            });
+            currentDate = addWeeks(currentDate, 1);
+          }
+        });
+      } else {
+        // Weekly without specific days: Use the same day of week as start date
+        let currentDate = start;
+        while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
+          doses.push({
+            id: `${prodId}-${currentDate.toISOString()}`,
+            productId: prodId,
+            productName,
+            doseMg: doseAmount,
+            route: routeType,
+            scheduledDate: currentDate.toISOString().split('T')[0],
+            scheduledTime: '09:00',
+            completed: false,
+          });
+          currentDate = addWeeks(currentDate, 1);
+        }
+      }
+    } else if (frequency === 'Bi-Weekly') {
+      if (daysOfWeek.length > 0) {
+        // Bi-weekly with specific days: Find next occurrence of each selected day, then recur every 2 weeks
+        const selectedDayNumbers = daysOfWeek.map(day => DAY_MAP[day]).sort((a, b) => a - b);
+        
+        selectedDayNumbers.forEach(targetDay => {
+          let currentDate = start;
+          const startDay = getDay(start);
+          
+          if (startDay === targetDay) {
+            currentDate = start;
+          } else {
+            currentDate = findNextDayOfWeek(start, targetDay);
+          }
+          
+          // Add doses every 2 weeks on this day
+          while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
+            doses.push({
+              id: `${prodId}-${currentDate.toISOString()}`,
+              productId: prodId,
+              productName,
+              doseMg: doseAmount,
+              route: routeType,
+              scheduledDate: currentDate.toISOString().split('T')[0],
+              scheduledTime: '09:00',
+              completed: false,
+            });
+            currentDate = addWeeks(currentDate, 2);
+          }
+        });
+      } else {
+        // Bi-weekly without specific days: Use the same day of week as start date
+        let currentDate = start;
+        while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
+          doses.push({
+            id: `${prodId}-${currentDate.toISOString()}`,
+            productId: prodId,
+            productName,
+            doseMg: doseAmount,
+            route: routeType,
+            scheduledDate: currentDate.toISOString().split('T')[0],
+            scheduledTime: '09:00',
+            completed: false,
+          });
+          currentDate = addWeeks(currentDate, 2);
+        }
+      }
+    } else if (frequency === 'Monthly') {
+      // Monthly: Add a dose on the same day of each month
+      let currentDate = start;
+      while (isBefore(currentDate, endDate) || isEqual(currentDate, endDate)) {
+        doses.push({
+          id: `${prodId}-${currentDate.toISOString()}`,
+          productId: prodId,
+          productName,
+          doseMg: doseAmount,
+          route: routeType,
+          scheduledDate: currentDate.toISOString().split('T')[0],
+          scheduledTime: '09:00',
+          completed: false,
+        });
+        currentDate = addMonths(currentDate, 1);
+      }
     }
+
+    // Sort doses by date
+    doses.sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
+
+    console.log(`Generated ${doses.length} doses. First 5:`, doses.slice(0, 5).map(d => d.scheduledDate));
 
     return doses;
   };

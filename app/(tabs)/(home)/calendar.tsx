@@ -6,6 +6,7 @@ import { Calendar, DateData } from 'react-native-calendars';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useApp } from '@/contexts/AppContext';
+import { format, parseISO } from 'date-fns';
 
 interface MarkedDate {
   dots: { key: string; color: string }[];
@@ -53,6 +54,8 @@ export default function CalendarScreen() {
   const markedDates = useMemo(() => {
     const marked: { [key: string]: MarkedDate } = {};
 
+    console.log('Preparing calendar marks for', scheduledDoses.length, 'scheduled doses');
+
     scheduledDoses.forEach(dose => {
       if (!dose.completed) {
         const dateKey = dose.scheduledDate;
@@ -75,6 +78,8 @@ export default function CalendarScreen() {
         }
       }
     });
+
+    console.log('Marked dates count:', Object.keys(marked).length);
 
     // Add selection styling if a date is selected
     if (selectedDate && marked[selectedDate]) {
@@ -99,12 +104,17 @@ export default function CalendarScreen() {
   const dosesForSelectedDate = useMemo(() => {
     if (!selectedDate) return [];
 
-    return scheduledDoses
+    const doses = scheduledDoses
       .filter(dose => dose.scheduledDate === selectedDate && !dose.completed)
       .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+
+    console.log(`Doses for ${selectedDate}:`, doses.length);
+    
+    return doses;
   }, [selectedDate, scheduledDoses]);
 
   const handleDayPress = (day: DateData) => {
+    console.log('Day pressed:', day.dateString);
     setSelectedDate(day.dateString);
   };
 
@@ -176,12 +186,7 @@ export default function CalendarScreen() {
           {selectedDate && (
             <View style={styles.selectedDateContainer}>
               <Text style={styles.selectedDateTitle}>
-                {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                })}
+                {format(parseISO(selectedDate + 'T00:00:00'), 'EEEE, MMMM d, yyyy')}
               </Text>
 
               {dosesForSelectedDate.length === 0 ? (

@@ -7,6 +7,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useApp } from '@/contexts/AppContext';
 import { DoseDue, LowStockAlert } from '@/types';
 import PremiumModal from '@/components/PremiumModal';
+import { parseISO, isAfter, isBefore, addHours } from 'date-fns';
 
 export default function DashboardScreen() {
   const { user, products, inventory, doseLogs, scheduledDoses, isPremium, canAddProduct } = useApp();
@@ -22,18 +23,29 @@ export default function DashboardScreen() {
   // Calculate doses due in next 24 hours
   const dosesDue = useMemo((): DoseDue[] => {
     const now = new Date();
-    const next24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const next24Hours = addHours(now, 24);
+    
+    console.log('Filtering doses due:', {
+      now: now.toISOString(),
+      next24Hours: next24Hours.toISOString(),
+      totalScheduledDoses: scheduledDoses.length,
+    });
     
     return scheduledDoses
       .filter(dose => {
         if (dose.completed) return false;
         
-        const doseDateTime = new Date(`${dose.scheduledDate}T${dose.scheduledTime}`);
-        return doseDateTime >= now && doseDateTime <= next24Hours;
+        // Parse the scheduled date and time
+        const doseDateTime = parseISO(`${dose.scheduledDate}T${dose.scheduledTime}:00`);
+        
+        // Check if dose is within the next 24 hours
+        const isInNext24Hours = isBefore(doseDateTime, next24Hours) || doseDateTime.getTime() === next24Hours.getTime();
+        
+        return isInNext24Hours;
       })
       .map(dose => {
-        const doseDateTime = new Date(`${dose.scheduledDate}T${dose.scheduledTime}`);
-        const isOverdue = doseDateTime < now;
+        const doseDateTime = parseISO(`${dose.scheduledDate}T${dose.scheduledTime}:00`);
+        const isOverdue = isBefore(doseDateTime, now);
         
         return {
           productId: dose.productId,
@@ -72,7 +84,11 @@ export default function DashboardScreen() {
           }
           break;
         case 'Bi-Weekly':
-          dosesPerMonth = 2;
+          if (product.daysOfWeek && product.daysOfWeek.length > 0) {
+            dosesPerMonth = product.daysOfWeek.length * 2; // Approximate 2 doses per month
+          } else {
+            dosesPerMonth = 2;
+          }
           break;
         case 'Monthly':
           dosesPerMonth = 1;
@@ -192,8 +208,8 @@ export default function DashboardScreen() {
               </View>
             ) : (
               <Pressable onPress={() => router.push('/(tabs)/(home)/calendar')}>
-                {dosesDue.map(dose => (
-                  <View key={`${dose.productId}-${dose.scheduledDate.toISOString()}`} style={commonStyles.card}>
+                {dosesDue.map((dose, index) => (
+                  <View key={`${dose.productId}-${dose.scheduledDate.toISOString()}-${index}`} style={commonStyles.card}>
                     <View style={commonStyles.cardHeader}>
                       <View style={{ flex: 1 }}>
                         <Text style={commonStyles.cardTitle}>{dose.productName}</Text>
@@ -201,7 +217,11 @@ export default function DashboardScreen() {
                           {dose.doseMg}mg • {dose.route} • {dose.scheduledTime}
                         </Text>
                         <Text style={[commonStyles.cardSubtitle, { fontSize: 12 }]}>
-                          {dose.scheduledDate.toLocaleDateString()}
+                          {dose.scheduledDate.toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
                         </Text>
                       </View>
                       <View style={[
