@@ -1,9 +1,13 @@
+
 {
   "name": "Natively",
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
     "dev": "EXPO_NO_TELEMETRY=1 expo start --tunnel",
+    "start": "EXPO_NO_TELEMETRY=1 expo start",
+    "start:lan": "EXPO_NO_TELEMETRY=1 expo start --lan",
+    "start:localhost": "EXPO_NO_TELEMETRY=1 expo start --localhost",
     "android": "EXPO_NO_TELEMETRY=1 expo start --android",
     "ios": "EXPO_NO_TELEMETRY=1 expo start --ios",
     "web": "EXPO_NO_TELEMETRY=1 expo start --web",
