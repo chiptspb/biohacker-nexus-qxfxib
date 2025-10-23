@@ -15,6 +15,7 @@ export default function DashboardScreen() {
   const { user, products, inventory, doseLogs, scheduledDoses, isPremium, canAddProduct } = useApp();
   const [refreshing, setRefreshing] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [dosesDueExpanded, setDosesDueExpanded] = useState(true);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -54,22 +55,34 @@ export default function DashboardScreen() {
     const todayStart = startOfDay(now); // 12:00 AM today
     const todayEnd = endOfDay(now); // 11:59:59 PM today
     
-    console.log('Filtering doses due for calendar day:', {
-      now: now.toISOString(),
-      todayStart: todayStart.toISOString(),
-      todayEnd: todayEnd.toISOString(),
-      totalScheduledDoses: scheduledDoses.length,
-    });
+    console.log('=== FILTERING DOSES DUE TODAY ===');
+    console.log('Current time:', now.toISOString());
+    console.log('Today start:', todayStart.toISOString());
+    console.log('Today end:', todayEnd.toISOString());
+    console.log('Total scheduled doses:', scheduledDoses.length);
+    console.log('Uncompleted doses:', scheduledDoses.filter(d => !d.completed).length);
     
-    return scheduledDoses
+    const filtered = scheduledDoses
       .filter(dose => {
-        if (dose.completed) return false;
+        if (dose.completed) {
+          return false;
+        }
         
         // Parse the scheduled date and time
         const doseDateTime = parseISO(`${dose.scheduledDate}T${dose.scheduledTime}:00`);
         
         // Check if dose is within today's calendar day (12:00 AM - 11:59 PM)
         const isToday = isWithinInterval(doseDateTime, { start: todayStart, end: todayEnd });
+        
+        if (isToday) {
+          console.log('Dose due today:', {
+            product: dose.productName,
+            date: dose.scheduledDate,
+            time: dose.scheduledTime,
+            timeOfDay: dose.timeOfDay,
+            doseDateTime: doseDateTime.toISOString(),
+          });
+        }
         
         return isToday;
       })
@@ -89,6 +102,10 @@ export default function DashboardScreen() {
         };
       })
       .sort((a, b) => a.scheduledDate.getTime() - b.scheduledDate.getTime());
+    
+    console.log(`Found ${filtered.length} doses due today`);
+    
+    return filtered;
   }, [scheduledDoses]);
 
   // Calculate low stock alerts (products with less than 3 months' supply)
@@ -252,43 +269,94 @@ export default function DashboardScreen() {
 
           {/* Doses Due Today */}
           <View style={commonStyles.section}>
-            <Text style={commonStyles.sectionTitle}>📅 Doses Due Today</Text>
+            <Pressable 
+              style={styles.sectionHeader}
+              onPress={() => setDosesDueExpanded(!dosesDueExpanded)}
+            >
+              <Text style={commonStyles.sectionTitle}>📅 Doses Due Today</Text>
+              <IconSymbol 
+                name={dosesDueExpanded ? 'chevron.up' : 'chevron.down'} 
+                size={20} 
+                color={colors.textSecondary} 
+              />
+            </Pressable>
+            
             {dosesDue.length === 0 ? (
               <View style={styles.emptyCard}>
                 <IconSymbol name="checkmark.circle" size={32} color={colors.success} />
                 <Text style={styles.emptyText}>All caught up! No doses due today.</Text>
               </View>
             ) : (
-              <Pressable onPress={() => router.push('/(tabs)/(home)/calendar')}>
-                {dosesDue.map((dose, index) => {
-                  const protocolInfo = getProtocolInfo(dose.productId);
-                  const dayOfWeek = DAY_NAMES[getDay(dose.scheduledDate)];
-                  
-                  return (
-                    <View key={`${dose.productId}-${dose.scheduledDate.toISOString()}-${index}`} style={commonStyles.card}>
-                      <View style={commonStyles.cardHeader}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={commonStyles.cardTitle}>{dose.productName}</Text>
-                          <Text style={commonStyles.cardSubtitle}>
-                            {dose.doseMg}mg • {dose.route} • {dose.timeOfDay || dose.scheduledTime}
-                          </Text>
-                          <Text style={styles.protocolInfo}>
-                            {dayOfWeek} • {protocolInfo}
-                          </Text>
-                        </View>
-                        <View style={[
-                          styles.statusBadge, 
-                          { backgroundColor: dose.isOverdue ? colors.alert : colors.success }
-                        ]}>
-                          <Text style={styles.statusText}>
-                            {dose.isOverdue ? 'Overdue' : 'Due'}
-                          </Text>
-                        </View>
-                      </View>
+              <>
+                {/* Summary Badge */}
+                <View style={styles.dosesSummaryBadge}>
+                  <View style={styles.dosesSummaryContent}>
+                    <Text style={styles.dosesSummaryNumber}>{dosesDue.length}</Text>
+                    <Text style={styles.dosesSummaryText}>
+                      {dosesDue.length === 1 ? 'dose' : 'doses'} scheduled
+                    </Text>
+                  </View>
+                  <View style={styles.dosesSummaryStats}>
+                    <View style={styles.statItem}>
+                      <View style={[styles.statDot, { backgroundColor: colors.alert }]} />
+                      <Text style={styles.statText}>
+                        {dosesDue.filter(d => d.isOverdue).length} overdue
+                      </Text>
                     </View>
-                  );
-                })}
-              </Pressable>
+                    <View style={styles.statItem}>
+                      <View style={[styles.statDot, { backgroundColor: colors.success }]} />
+                      <Text style={styles.statText}>
+                        {dosesDue.filter(d => !d.isOverdue).length} upcoming
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Expandable Dose List */}
+                {dosesDueExpanded && (
+                  <View style={styles.dosesList}>
+                    {dosesDue.map((dose, index) => {
+                      const protocolInfo = getProtocolInfo(dose.productId);
+                      const dayOfWeek = DAY_NAMES[getDay(dose.scheduledDate)];
+                      
+                      return (
+                        <Pressable 
+                          key={`${dose.productId}-${dose.scheduledDate.toISOString()}-${index}`}
+                          style={styles.doseItem}
+                          onPress={handleLogDose}
+                        >
+                          <View style={styles.doseItemContent}>
+                            <View style={[
+                              styles.doseStatusIndicator, 
+                              { backgroundColor: dose.isOverdue ? colors.alert : colors.success }
+                            ]} />
+                            <View style={styles.doseItemDetails}>
+                              <Text style={styles.doseItemTitle}>{dose.productName}</Text>
+                              <Text style={styles.doseItemSubtitle}>
+                                {dose.doseMg}mg • {dose.route} • {dose.timeOfDay || dose.scheduledTime}
+                              </Text>
+                              <Text style={styles.doseItemProtocol}>
+                                {dayOfWeek} • {protocolInfo}
+                              </Text>
+                            </View>
+                            <View style={styles.doseItemActions}>
+                              <View style={[
+                                styles.doseStatusBadge, 
+                                { backgroundColor: dose.isOverdue ? colors.alert : colors.success }
+                              ]}>
+                                <Text style={styles.doseStatusText}>
+                                  {dose.isOverdue ? 'Overdue' : 'Due'}
+                                </Text>
+                              </View>
+                              <IconSymbol name="chevron.right" size={16} color={colors.textSecondary} />
+                            </View>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+              </>
             )}
           </View>
 
@@ -410,6 +478,12 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.7)',
     marginTop: 2,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   emptyCard: {
     backgroundColor: colors.card,
     borderRadius: 12,
@@ -422,21 +496,97 @@ const styles = StyleSheet.create({
     marginTop: 12,
     textAlign: 'center',
   },
-  statusBadge: {
+  dosesSummaryBadge: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  dosesSummaryContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  dosesSummaryNumber: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: colors.primary,
+    marginRight: 12,
+  },
+  dosesSummaryText: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  dosesSummaryStats: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  dosesList: {
+    gap: 8,
+  },
+  doseItem: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  doseItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  doseStatusIndicator: {
+    width: 4,
+    height: 60,
+    borderRadius: 2,
+    marginRight: 12,
+  },
+  doseItemDetails: {
+    flex: 1,
+  },
+  doseItemTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  doseItemSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  doseItemProtocol: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '500',
+  },
+  doseItemActions: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  doseStatusBadge: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
   },
-  statusText: {
+  doseStatusText: {
     fontSize: 12,
     fontWeight: '600',
     color: colors.text,
-  },
-  protocolInfo: {
-    fontSize: 12,
-    color: colors.primary,
-    marginTop: 4,
-    fontWeight: '500',
   },
   alertCard: {
     borderLeftWidth: 3,
