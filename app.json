@@ -2,7 +2,7 @@
   "expo": {
     "name": "Natively",
     "slug": "Natively",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/natively-dark.png",
     "userInterfaceStyle": "automatic",
@@ -15,6 +15,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.chiptspb.biohackernexus",
+      "buildNumber": "3",
+      "supportsTablet": true,
+      "infoPlist": { "ITSAppUsesNonExemptEncryption": false }
+    },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
