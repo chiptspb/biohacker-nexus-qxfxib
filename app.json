@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/biohacker-nexus-icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/natively-dark.png",
       "resizeMode": "contain",
@@ -51,3 +51,4 @@
     }
   }
 }
+
