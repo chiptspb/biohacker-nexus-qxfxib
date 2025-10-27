@@ -37,6 +37,19 @@
       "expo-font",
       "expo-router",
       "expo-web-browser",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "extraPods": [
+              {
+                "name": "NitroModules",
+                "podspec": "https://raw.githubusercontent.com/mrousavy/react-native-nitro-modules/main/NitroModules.podspec"
+              }
+            ]
+          }
+        }
+      ],
       "react-native-iap"
     ],
     "scheme": "natively",
