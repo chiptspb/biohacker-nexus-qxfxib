@@ -4,7 +4,7 @@
     "slug": "Natively",
     "version": "1.0.2",
     "orientation": "portrait",
-    "icon": "./assets/images/natively-dark.png",
+    "icon": "./assets/images/biohacker-nexus-icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -13,6 +13,7 @@
       "backgroundColor": "#000000"
     },
     "ios": {
+      "icon": "./assets/images/biohacker-nexus-icon.png",
       "bundleIdentifier": "com.chiptspb.biohackernexus",
       "buildNumber": "4",
       "supportsTablet": true,
