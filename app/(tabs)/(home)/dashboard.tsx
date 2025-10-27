@@ -415,7 +415,7 @@ export default function DashboardScreen() {
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.premiumTitle}>Upgrade to Premium</Text>
                 <Text style={styles.premiumSubtext}>
-                  Track unlimited medications for just $4.99/month!
+                  Track unlimited medications for just $2.99/month!
                 </Text>
               </View>
               <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
