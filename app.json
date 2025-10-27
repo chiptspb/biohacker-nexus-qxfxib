@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/biohacker-nexus-icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/images/natively-dark.png",
       "resizeMode": "contain",
@@ -15,7 +15,7 @@
     "ios": {
       "icon": "./assets/images/biohacker-nexus-icon.png",
       "bundleIdentifier": "com.chiptspb.biohackernexus",
-      "buildNumber": "5",
+      "buildNumber": "6",
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -37,19 +37,6 @@
       "expo-font",
       "expo-router",
       "expo-web-browser",
-      [
-        "expo-build-properties",
-        {
-          "ios": {
-            "extraPods": [
-              {
-                "name": "NitroModules",
-                "podspec": "https://raw.githubusercontent.com/mrousavy/react-native-nitro-modules/main/NitroModules.podspec"
-              }
-            ]
-          }
-        }
-      ],
       "react-native-iap"
     ],
     "scheme": "natively",
