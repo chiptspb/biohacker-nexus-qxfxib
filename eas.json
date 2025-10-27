@@ -10,7 +10,13 @@
       "autoIncrement": true
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_POD_INSTALL_ARGS": "--repo-update"
+      }
     }
+  },
+  "cli": {
+    "appVersionSource": "remote"
   }
 }
