@@ -33,6 +33,13 @@
       "favicon": "./assets/images/final_quest_240x240.png",
       "bundler": "metro"
     },
+    "plugins": [
+      "expo-font",
+      "expo-router",
+      "expo-web-browser",
+      "react-native-nitro-modules/expo-plugin",
+      "react-native-iap"
+    ],
     "scheme": "natively",
     "experiments": {
       "typedRoutes": true
@@ -45,4 +52,5 @@
     }
   }
 }
+
 
