@@ -17,9 +17,7 @@
       "bundleIdentifier": "com.chiptspb.biohackernexus",
       "buildNumber": "6",
       "supportsTablet": true,
-      "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+      "infoPlist": { "ITSAppUsesNonExemptEncryption": false }
     },
     "android": {
       "adaptiveIcon": {
@@ -29,28 +27,22 @@
       "edgeToEdgeEnabled": true,
       "package": "com.chiptspb.biohackernexus"
     },
-    "web": {
-      "favicon": "./assets/images/final_quest_240x240.png",
-      "bundler": "metro"
-    },
+    "web": { "favicon": "./assets/images/final_quest_240x240.png", "bundler": "metro" },
     "plugins": [
       "expo-font",
       "expo-router",
       "expo-web-browser",
-      "react-native-nitro-modules/expo-plugin",
+      "react-native-nitro-modules",
       "react-native-iap"
     ],
     "scheme": "natively",
-    "experiments": {
-      "typedRoutes": true
-    },
+    "experiments": { "typedRoutes": true },
     "extra": {
       "router": {},
-      "eas": {
-        "projectId": "6db68e21-836b-40f0-b909-78ab06d65fe9"
-      }
+      "eas": { "projectId": "6db68e21-836b-40f0-b909-78ab06d65fe9" }
     }
   }
 }
+
 
 
