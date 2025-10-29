@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserProfile, Product, Inventory, DoseLog, ScheduledDose } from '@/types';
+import { hasActiveSub } from '@/services/iapService'; // Ensure your receipt validator is imported
 
 interface AppContextType {
   user: UserProfile | null;
@@ -27,6 +28,7 @@ interface AppContextType {
   updateInventory: (inv: Inventory) => void;
   addScheduledDose: (dose: ScheduledDose) => void;
   canAddProduct: () => boolean;
+  refreshPremiumStatus: () => Promise<void>; // NEW: force refresh after purchase
   logout: () => void;
 }
 
@@ -54,7 +56,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const isPremium = user?.isPremium || false;
 
-  // Load data from AsyncStorage on mount
   useEffect(() => {
     loadData();
   }, []);
@@ -109,7 +110,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [user, products, inventory, doseLogs, scheduledDoses, hasSeenDisclaimer, hasCompletedOnboarding]);
 
-  // Save data to AsyncStorage whenever it changes
   useEffect(() => {
     if (!isLoading && user) {
       saveData();
@@ -153,6 +153,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const canAddProduct = () => {
     if (isPremium) return true;
     return products.length < 1;
+  };
+
+  // NEW: force update premium status from IAP receipt/entitlement check after purchase
+  const refreshPremiumStatus = async () => {
+    try {
+      const premiumActive = await hasActiveSub();
+      if (user) {
+        setUser({ ...user, isPremium: premiumActive });
+      }
+    } catch (error) {
+      // Optionally handle/log error
+    }
   };
 
   const logout = async () => {
@@ -204,6 +216,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updateInventory,
         addScheduledDose,
         canAddProduct,
+        refreshPremiumStatus, // Provide to components after purchase
         logout,
       }}
     >
