@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert, RefreshControl } from 'react-native';
 import { Stack, router } from 'expo-router';
@@ -7,6 +6,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useApp } from '@/contexts/AppContext';
 import { DoseDue, LowStockAlert } from '@/types';
 import PremiumModal from '@/components/PremiumModal';
+import { buyMonthly } from '@/services/iapService'; // Ensure this import
 import { parseISO, startOfDay, endOfDay, isWithinInterval, isBefore, getDay } from 'date-fns';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -19,11 +19,9 @@ export default function DashboardScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // Simulate refresh - in real app, sync with backend
     setTimeout(() => setRefreshing(false), 1000);
   };
 
-  // Get protocol info for a product
   const getProtocolInfo = (productId: string): string => {
     const product = products.find(p => p.id === productId);
     if (!product) return '';
@@ -31,14 +29,11 @@ export default function DashboardScreen() {
     const frequencies = product.frequencies || [product.frequency];
     const daysOfWeek = product.daysOfWeek || [];
 
-    // Build frequency display
     let freqDisplay = frequencies.join(', ');
 
-    // Add days of week if specified
     if (daysOfWeek.length > 0) {
       freqDisplay += ` (${daysOfWeek.join(', ')})`;
     } else if (frequencies.includes('Weekly') || frequencies.includes('Bi-Weekly')) {
-      // If weekly/bi-weekly without specific days, show the day based on starting date
       if (product.startingDate) {
         const startDate = new Date(product.startingDate + 'T00:00:00');
         const dayOfWeek = getDay(startDate);
@@ -49,72 +44,44 @@ export default function DashboardScreen() {
     return freqDisplay;
   };
 
-  // Calculate doses due in the current calendar day (12:00 AM - 11:59 PM)
   const dosesDue = useMemo((): DoseDue[] => {
     const now = new Date();
-    const todayStart = startOfDay(now); // 12:00 AM today
-    const todayEnd = endOfDay(now); // 11:59:59 PM today
-    
-    console.log('=== FILTERING DOSES DUE TODAY ===');
-    console.log('Current time:', now.toISOString());
-    console.log('Today start:', todayStart.toISOString());
-    console.log('Today end:', todayEnd.toISOString());
-    console.log('Total scheduled doses:', scheduledDoses.length);
-    console.log('Uncompleted doses:', scheduledDoses.filter(d => !d.completed).length);
+    const todayStart = startOfDay(now);
+    const todayEnd = endOfDay(now);
     
     const filtered = scheduledDoses
       .filter(dose => {
         if (dose.completed) {
           return false;
         }
-        
-        // Parse the scheduled date and time
         const doseDateTime = parseISO(`${dose.scheduledDate}T${dose.scheduledTime}:00`);
-        
-        // Check if dose is within today's calendar day (12:00 AM - 11:59 PM)
         const isToday = isWithinInterval(doseDateTime, { start: todayStart, end: todayEnd });
-        
-        if (isToday) {
-          console.log('Dose due today:', {
-            product: dose.productName,
-            date: dose.scheduledDate,
-            time: dose.scheduledTime,
-            timeOfDay: dose.timeOfDay,
-            doseDateTime: doseDateTime.toISOString(),
-          });
-        }
-        
         return isToday;
       })
       .map(dose => {
         const doseDateTime = parseISO(`${dose.scheduledDate}T${dose.scheduledTime}:00`);
         const isOverdue = isBefore(doseDateTime, new Date());
-        
         return {
           productId: dose.productId,
           productName: dose.productName,
           doseMg: dose.doseMg,
           route: dose.route,
-          scheduledTime: dose.timeOfDay || dose.scheduledTime, // Show AM/PM for AM/PM daily doses
+          scheduledTime: dose.timeOfDay || dose.scheduledTime,
           scheduledDate: doseDateTime,
           isOverdue,
           timeOfDay: dose.timeOfDay,
         };
       })
       .sort((a, b) => a.scheduledDate.getTime() - b.scheduledDate.getTime());
-    
-    console.log(`Found ${filtered.length} doses due today`);
-    
+
     return filtered;
   }, [scheduledDoses]);
 
-  // Calculate low stock alerts (products with less than 3 months' supply)
   const lowStockAlerts = useMemo((): LowStockAlert[] => {
     return products.map(product => {
       const inv = inventory.find(i => i.productId === product.id);
       if (!inv) return null;
 
-      // Calculate total doses per month based on all frequencies
       const frequencies = product.frequencies || [product.frequency];
       let dosesPerMonth = 0;
       
@@ -141,16 +108,15 @@ export default function DashboardScreen() {
             dosesPerMonth += 5;
             break;
           case 'Weekly':
-            // If specific days are selected, count them
             if (product.daysOfWeek && product.daysOfWeek.length > 0) {
-              dosesPerMonth += product.daysOfWeek.length * 4; // Approximate 4 weeks per month
+              dosesPerMonth += product.daysOfWeek.length * 4;
             } else {
               dosesPerMonth += 4;
             }
             break;
           case 'Bi-Weekly':
             if (product.daysOfWeek && product.daysOfWeek.length > 0) {
-              dosesPerMonth += product.daysOfWeek.length * 2; // Approximate 2 doses per month
+              dosesPerMonth += product.daysOfWeek.length * 2;
             } else {
               dosesPerMonth += 2;
             }
@@ -167,7 +133,6 @@ export default function DashboardScreen() {
       const monthsSupply = totalDoseMg > 0 ? inv.quantity / totalDoseMg : 0;
       const daysRemaining = monthsSupply * 30;
 
-      // Alert if less than 3 months' supply
       if (monthsSupply < 3) {
         return {
           productId: product.id,
@@ -202,13 +167,14 @@ export default function DashboardScreen() {
     router.push('/(tabs)/medications');
   };
 
-  const handleUpgradePremium = () => {
-    Alert.alert(
-      'Premium Upgrade',
-      'In-app purchases will be available in the production version. For now, enjoy exploring the app!',
-      [{ text: 'OK' }]
-    );
-    setShowPremiumModal(false);
+  // Updated for production IAP
+  const handleUpgradePremium = async () => {
+    try {
+      await buyMonthly(); // Can swap for buyAnnual or prompt user
+      setShowPremiumModal(false);
+    } catch (error) {
+      Alert.alert('Upgrade Failed', 'Unable to complete purchase. Please try again.');
+    }
   };
 
   return (
@@ -288,7 +254,6 @@ export default function DashboardScreen() {
               </View>
             ) : (
               <>
-                {/* Summary Badge */}
                 <View style={styles.dosesSummaryBadge}>
                   <View style={styles.dosesSummaryContent}>
                     <Text style={styles.dosesSummaryNumber}>{dosesDue.length}</Text>
@@ -311,8 +276,6 @@ export default function DashboardScreen() {
                     </View>
                   </View>
                 </View>
-
-                {/* Expandable Dose List */}
                 {dosesDueExpanded && (
                   <View style={styles.dosesList}>
                     {dosesDue.map((dose, index) => {
