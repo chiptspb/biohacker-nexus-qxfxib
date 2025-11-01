@@ -1,6 +1,15 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { Platform } from "react-native";
+import {
+  purchaseUpdatedListener,
+  purchaseErrorListener,
+  finishTransaction,
+  getAvailablePurchases,
+  endConnection,
+} from "react-native-iap";
 
-import * as RNIap from 'react-native-iap';
-import { Platform, Alert } from 'react-native';
+// Use require for the working purchase() you already have
+const IAP: any = require("react-native-iap");
 
 export interface SubscriptionProduct {
   productId: string;
@@ -12,345 +21,241 @@ export interface SubscriptionProduct {
   subscriptionPeriod?: string;
 }
 
-// Product IDs for subscriptions
-const SUBSCRIPTION_SKUS = Platform.select({
-  ios: [
-    'com.chiptspb.biohackernexus.premium.monthly',
-    'com.chiptspb.biohackernexus.premium.annual',
-  ],
-  android: [
-    'com.chiptspb.biohackernexus.premium.monthly',
-    'com.chiptspb.biohackernexus.premium.annual',
-  ],
-  default: [],
-});
+const SUBSCRIPTION_SKUS: string[] =
+  Platform.OS === "ios" || Platform.OS === "android"
+    ? [
+        "com.chiptspb.biohackernexus.premium.monthly",
+        "com.chiptspb.biohackernexus.premium.annual",
+      ]
+    : [];
 
 class IAPService {
   private isInitialized = false;
-  private purchaseUpdateSubscription: any = null;
-  private purchaseErrorSubscription: any = null;
+  private purchaseUpdateSub: any = null;
+  private purchaseErrorSub: any = null;
 
-  async initialize(): Promise<void> {
+  // ---------- helpers ----------
+  private async safeClearPlatformQueues() {
+    if (Platform.OS === "ios") {
+      if (typeof IAP.clearTransactionsIOS === "function") {
+        await IAP.clearTransactionsIOS();
+        console.log("🧹 Cleared pending iOS transactions");
+      }
+    } else {
+      if (
+        typeof IAP.flushFailedPurchasesCachedAsPendingAndroid === "function"
+      ) {
+        await IAP.flushFailedPurchasesCachedAsPendingAndroid();
+        console.log("🧹 Flushed failed Android purchases");
+      }
+    }
+  }
+
+  private normalizeProducts(products: any[]): SubscriptionProduct[] {
+    return (products || []).map((p: any) => ({
+      productId: p.productId ?? p.sku ?? "",
+      title: p.title ?? "Premium Subscription",
+      description: p.description ?? "Unlock premium features",
+      price: p.price ?? p.localizedPrice ?? "$0.00",
+      localizedPrice: p.localizedPrice ?? p.price ?? "$0.00",
+      currency: p.currency ?? p.priceCurrencyCode ?? "USD",
+      subscriptionPeriod:
+        p.subscriptionPeriodUnitIOS ??
+        p.subscriptionPeriodAndroid ??
+        p.subscriptionPeriod ??
+        undefined,
+    }));
+  }
+
+  private async fetchSubscriptions(skus: string[]) {
     try {
-      console.log('🚀 Initializing IAP service for TestFlight/Sandbox...');
-      
-      // Initialize connection to store (automatically uses sandbox for TestFlight builds)
-      const result = await RNIap.initConnection();
-      console.log('✅ IAP connection initialized:', result);
-      console.log('📱 Platform:', Platform.OS);
-      console.log('🧪 Sandbox mode: ENABLED (TestFlight/Debug builds use sandbox automatically)');
-      
+      const res = await IAP.getSubscriptions({ skus });
+      if (Array.isArray(res)) return this.normalizeProducts(res);
+    } catch (_) {
+      try {
+        const res = await IAP.getProducts(skus);
+        if (Array.isArray(res)) return this.normalizeProducts(res);
+      } catch {}
+    }
+    return [];
+  }
+
+  // ---------- public API ----------
+  async initialize(): Promise<void> {
+    if (this.isInitialized) return;
+    try {
+      console.log("🚀 Initializing IAP...");
+      const ok = await IAP.initConnection?.();
+      console.log("✅ IAP connection initialized:", ok);
       this.isInitialized = true;
-
-      // Clear any pending transactions on iOS
-      if (Platform.OS === 'ios') {
-        await RNIap.clearTransactionIOS();
-        console.log('🧹 Cleared pending iOS transactions');
-      }
-
-      // Flush failed purchases on Android
-      if (Platform.OS === 'android') {
-        await RNIap.flushFailedPurchasesCachedAsPendingAndroid();
-        console.log('🧹 Flushed failed Android purchases');
-      }
-
-      console.log('✅ IAP service initialized successfully - Ready for TestFlight testing!');
-    } catch (error) {
-      console.error('❌ Error initializing IAP service:', error);
-      throw error;
+      await this.safeClearPlatformQueues();
+    } catch (e) {
+      console.error("❌ Error initializing IAP:", e);
+      throw e;
     }
   }
 
   async getProducts(): Promise<SubscriptionProduct[]> {
     try {
-      if (!this.isInitialized) {
-        await this.initialize();
-      }
+      if (!this.isInitialized) await this.initialize();
 
-      console.log('📦 Fetching subscription products:', SUBSCRIPTION_SKUS);
-      
-      const products = await RNIap.getSubscriptions({ skus: SUBSCRIPTION_SKUS });
-      console.log('✅ Fetched products from store:', products.length);
+      console.log("📦 Fetching subscription products:", SUBSCRIPTION_SKUS);
+      const products = await this.fetchSubscriptions(SUBSCRIPTION_SKUS);
+      console.log("✅ Fetched products from store:", products.length);
 
-      if (products.length > 0) {
-        return products.map(product => ({
-          productId: product.productId,
-          title: product.title || 'Premium Subscription',
-          description: product.description || 'Unlock unlimited tracking',
-          price: product.price || '$2.99',
-          localizedPrice: product.localizedPrice || product.price || '$2.99',
-          currency: product.currency || 'USD',
-          subscriptionPeriod: product.subscriptionPeriodUnitIOS || 'MONTH',
-        }));
-      } else {
-        console.log('⚠️ No products returned from store, using fallback prices');
-        // Return fallback products for testing
-        return [
-          {
-            productId: 'com.chiptspb.biohackernexus.premium.monthly',
-            title: 'Premium Monthly',
-            description: 'Unlimited medications and features',
-            price: '$2.99',
-            localizedPrice: '$2.99',
-            currency: 'USD',
-            subscriptionPeriod: 'MONTH',
-          },
-          {
-            productId: 'com.chiptspb.biohackernexus.premium.annual',
-            title: 'Premium Annual',
-            description: 'Unlimited medications and features - Best Value!',
-            price: '$24.99',
-            localizedPrice: '$24.99',
-            currency: 'USD',
-            subscriptionPeriod: 'YEAR',
-          },
-        ];
-      }
-    } catch (error) {
-      console.error('❌ Error fetching products:', error);
-      
-      // Return fallback products for testing
-      console.log('⚠️ Using fallback products for TestFlight testing');
+      if (products.length > 0) return products;
+
       return [
         {
-          productId: 'com.chiptspb.biohackernexus.premium.monthly',
-          title: 'Premium Monthly',
-          description: 'Unlimited medications and features',
-          price: '$2.99',
-          localizedPrice: '$2.99',
-          currency: 'USD',
-          subscriptionPeriod: 'MONTH',
+          productId: "com.chiptspb.biohackernexus.premium.monthly",
+          title: "Premium Monthly",
+          description: "Unlimited medications and features",
+          price: "$2.99",
+          localizedPrice: "$2.99",
+          currency: "USD",
+          subscriptionPeriod: "MONTH",
         },
         {
-          productId: 'com.chiptspb.biohackernexus.premium.annual',
-          title: 'Premium Annual',
-          description: 'Unlimited medications and features - Best Value!',
-          price: '$24.99',
-          localizedPrice: '$24.99',
-          currency: 'USD',
-          subscriptionPeriod: 'YEAR',
+          productId: "com.chiptspb.biohackernexus.premium.annual",
+          title: "Premium Annual",
+          description: "Unlimited medications and features - Best value",
+          price: "$24.99",
+          localizedPrice: "$24.99",
+          currency: "USD",
+          subscriptionPeriod: "YEAR",
         },
       ];
+    } catch (e) {
+      console.error("❌ Error fetching products:", e);
+      return [];
     }
   }
 
+  // ---------- PURCHASE (unchanged) ----------
   async purchaseSubscription(productId: string): Promise<boolean> {
     try {
-      if (!this.isInitialized) {
-        await this.initialize();
-      }
+      if (!this.isInitialized) await this.initialize();
+      console.log("💳 Purchasing (subscription):", productId);
 
-      console.log('💳 Attempting to purchase subscription:', productId);
-      console.log('🧪 Using sandbox/TestFlight mode');
-
-      // Request purchase
-      const purchase = await RNIap.requestSubscription({
-        sku: productId,
-        ...(Platform.OS === 'android' && {
-          subscriptionOffers: [
-            {
-              sku: productId,
-              offerToken: '',
-            },
-          ],
-        }),
+      const purchase = await IAP.requestPurchase({
+        request: {
+          ios: {
+            sku: productId,
+            quantity: 1,
+            andDangerouslyFinishTransactionAutomatically: false,
+          },
+          android: {
+            skus: [productId],
+          },
+        },
+        type: "subs",
       });
 
-      console.log('✅ Purchase successful:', purchase);
-
-      // Finish transaction
-      if (Platform.OS === 'ios') {
-        await RNIap.finishTransaction({ purchase, isConsumable: false });
-        console.log('✅ iOS transaction finished');
-      } else if (Platform.OS === 'android') {
-        await RNIap.acknowledgePurchaseAndroid({ token: purchase.purchaseToken });
-        console.log('✅ Android purchase acknowledged');
-      }
-
+      console.log("✅ Purchase initiated:", purchase);
       return true;
-    } catch (error: any) {
-      console.error('❌ Error purchasing subscription:', error);
-      
-      // Handle user cancellation gracefully
-      if (error.code === 'E_USER_CANCELLED') {
-        console.log('ℹ️ User cancelled purchase');
+    } catch (e: any) {
+      console.error("❌ Error purchasing subscription:", e);
+      if (e?.code === "E_USER_CANCELLED") {
+        console.log("ℹ️ User cancelled purchase");
         return false;
       }
-
-      throw error;
+      return false;
     }
+  }
+
+  // ---------- PURCHASE LISTENERS (new implementation) ----------
+  setupPurchaseListeners(
+    onPurchaseSuccess: (purchase: any) => void,
+    onPurchaseError: (error: any) => void
+  ) {
+    console.log("👂 Setting up purchase listeners...");
+
+    // purchaseUpdatedListener
+    this.purchaseUpdateSub = purchaseUpdatedListener(async (purchase) => {
+      try {
+        console.log("🧾 Purchase received:", purchase);
+
+        // ✅ Validate on server if needed
+        // const isValid = await validateReceiptOnServer(purchase);
+        const isValid = true; // temp stub
+
+        if (isValid) {
+          await finishTransaction({ purchase, isConsumable: false });
+          console.log("✅ Transaction finished successfully");
+          onPurchaseSuccess(purchase);
+        } else {
+          console.error("❌ Invalid purchase receipt");
+        }
+      } catch (error) {
+        console.error("❌ Error handling purchase:", error);
+        onPurchaseError(error);
+      }
+    });
+
+    // purchaseErrorListener
+    this.purchaseErrorSub = purchaseErrorListener((error) => {
+      if (error?.code === "E_USER_CANCELLED") {
+        console.log("ℹ️ User cancelled purchase");
+      } else {
+        console.error("❌ Purchase error:", error);
+        onPurchaseError(error);
+      }
+    });
+
+    console.log("✅ Purchase listeners set up successfully");
+  }
+
+  removePurchaseListeners() {
+    this.purchaseUpdateSub?.remove?.();
+    this.purchaseErrorSub?.remove?.();
+    this.purchaseUpdateSub = null;
+    this.purchaseErrorSub = null;
+    console.log("🔇 Purchase listeners removed");
   }
 
   async restorePurchases(): Promise<boolean> {
     try {
-      if (!this.isInitialized) {
-        await this.initialize();
-      }
-
-      console.log('🔄 Restoring purchases...');
-
-      // Get available purchases
-      const purchases = await RNIap.getAvailablePurchases();
-      console.log('📦 Available purchases:', purchases.length);
-
-      if (purchases && purchases.length > 0) {
-        // Check if any purchase is a valid subscription
-        const hasValidSubscription = purchases.some(purchase => {
-          const isValid = SUBSCRIPTION_SKUS.includes(purchase.productId);
-          if (isValid) {
-            console.log('✅ Found valid subscription:', purchase.productId);
-          }
-          return isValid;
-        });
-
-        console.log('🔍 Has valid subscription:', hasValidSubscription);
-        return hasValidSubscription;
-      }
-
-      console.log('ℹ️ No purchases found to restore');
-      return false;
-    } catch (error) {
-      console.error('❌ Error restoring purchases:', error);
-      throw error;
-    }
-  }
-
-  async checkSubscriptionStatus(forceRefresh: boolean = false): Promise<boolean> {
-    try {
-      if (!this.isInitialized) {
-        await this.initialize();
-      }
-
-      console.log('🔍 Checking subscription status...');
-
-      // Get available purchases
-      const purchases = await RNIap.getAvailablePurchases();
-      console.log('📦 Current purchases:', purchases.length);
-
-      if (purchases && purchases.length > 0) {
-        // Check if any purchase is a valid subscription
-        const hasValidSubscription = purchases.some(purchase => {
-          const isSubscription = SUBSCRIPTION_SKUS.includes(purchase.productId);
-          
-          // On iOS, check if subscription is still valid
-          if (Platform.OS === 'ios' && purchase.transactionReceipt) {
-            // In production, you would validate the receipt with Apple's servers
-            // For sandbox testing, we'll trust the purchase exists
-            console.log('📱 iOS subscription found:', purchase.productId);
-            return isSubscription;
-          }
-          
-          // On Android, check purchase state
-          if (Platform.OS === 'android') {
-            const isValid = isSubscription && purchase.purchaseStateAndroid === 1; // 1 = purchased
-            if (isValid) {
-              console.log('🤖 Android subscription found:', purchase.productId);
-            }
-            return isValid;
-          }
-
-          return isSubscription;
-        });
-
-        console.log('✅ Has valid subscription:', hasValidSubscription);
-        return hasValidSubscription;
-      }
-
-      console.log('ℹ️ No active subscriptions found');
-      return false;
-    } catch (error) {
-      console.error('❌ Error checking subscription status:', error);
-      return false;
-    }
-  }
-
-  setupPurchaseListeners(
-    onPurchaseSuccess: (purchase: any) => void,
-    onPurchaseError: (error: any) => void
-  ): void {
-    try {
-      console.log('👂 Setting up purchase listeners...');
-
-      // Listen for purchase updates
-      this.purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(
-        async (purchase) => {
-          console.log('📬 Purchase updated:', purchase);
-          
-          const receipt = purchase.transactionReceipt;
-          if (receipt) {
-            try {
-              // Finish the transaction
-              if (Platform.OS === 'ios') {
-                await RNIap.finishTransaction({ purchase, isConsumable: false });
-                console.log('✅ iOS transaction finished');
-              } else if (Platform.OS === 'android') {
-                await RNIap.acknowledgePurchaseAndroid({ 
-                  token: purchase.purchaseToken 
-                });
-                console.log('✅ Android purchase acknowledged');
-              }
-
-              onPurchaseSuccess(purchase);
-            } catch (error) {
-              console.error('❌ Error finishing transaction:', error);
-              onPurchaseError(error);
-            }
-          }
-        }
+      if (!this.isInitialized) await this.initialize();
+      const purchases: any[] = (await getAvailablePurchases()) ?? [];
+      const hasSub = purchases.some((p) =>
+        SUBSCRIPTION_SKUS.includes(p.productId ?? p.sku ?? "")
       );
-
-      // Listen for purchase errors
-      this.purchaseErrorSubscription = RNIap.purchaseErrorListener(
-        (error) => {
-          console.error('❌ Purchase error:', error);
-          
-          // Don't show error for user cancellation
-          if (error.code !== 'E_USER_CANCELLED') {
-            onPurchaseError(error);
-          } else {
-            console.log('ℹ️ User cancelled purchase');
-          }
-        }
+      console.log(
+        "📦 Restored purchases:",
+        purchases.length,
+        "Has sub:",
+        hasSub
       );
-
-      console.log('✅ Purchase listeners set up successfully');
-    } catch (error) {
-      console.error('❌ Error setting up purchase listeners:', error);
+      return hasSub;
+    } catch (e) {
+      console.error("❌ Error restoring purchases:", e);
+      return false;
     }
   }
 
-  removePurchaseListeners(): void {
+  async checkSubscriptionStatus(): Promise<boolean> {
     try {
-      console.log('🔇 Removing purchase listeners...');
-      
-      if (this.purchaseUpdateSubscription) {
-        this.purchaseUpdateSubscription.remove();
-        this.purchaseUpdateSubscription = null;
-      }
-
-      if (this.purchaseErrorSubscription) {
-        this.purchaseErrorSubscription.remove();
-        this.purchaseErrorSubscription = null;
-      }
-
-      console.log('✅ Purchase listeners removed');
-    } catch (error) {
-      console.error('❌ Error removing purchase listeners:', error);
+      if (!this.isInitialized) await this.initialize();
+      const purchases: any[] = (await getAvailablePurchases()) ?? [];
+      const hasSub = purchases.some((p) =>
+        SUBSCRIPTION_SKUS.includes(p.productId ?? p.sku ?? "")
+      );
+      console.log("✅ Active subscription:", hasSub);
+      return hasSub;
+    } catch (e) {
+      console.error("❌ Error checking subscription status:", e);
+      return false;
     }
   }
 
-  async endConnection(): Promise<void> {
+  async endConnection() {
     try {
-      console.log('🔌 Ending IAP connection...');
-      
       this.removePurchaseListeners();
-      
-      await RNIap.endConnection();
+      await endConnection();
       this.isInitialized = false;
-      
-      console.log('✅ IAP connection ended');
-    } catch (error) {
-      console.error('❌ Error ending IAP connection:', error);
+      console.log("✅ IAP connection ended");
+    } catch (e) {
+      console.error("❌ Error ending IAP connection:", e);
     }
   }
 }
